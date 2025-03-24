@@ -779,7 +779,6 @@ namespace WE_ImageToPixelart
                     {
                         // Get the pixel color at the calculated position.
                         Color c = b.GetPixel(x, y);
-                        // GetCustomColor = $"#FF{c.R:X2}{c.G:X2}{c.B:X2}";
                         GetCustomColor = c;
 
                         // Stop the System.Windows.Forms.Timer.
@@ -806,7 +805,7 @@ namespace WE_ImageToPixelart
                             // Remove all instances of the picked color if it was part of a selection.
                             if (isPickedColor)
                             {
-                                if (color == GetCustomColor && entry.WasPicked)
+                                if (color.ToArgb() == GetCustomColor.ToArgb() && entry.WasPicked)
                                 {
                                     // Confirm to skip adding this entry.
                                     if (MessageBox.Show($"Do you want to remove the following block?\n\n" +
@@ -815,12 +814,18 @@ namespace WE_ImageToPixelart
                                                         $"Was Picked: '{entry.WasPicked}'",
                                                         "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes
                                     ) continue;
+                                    {
+                                        // Cancel searching after first match.
+                                        // If using unique colors, there will only be one match.
+                                        if (UniqueColors.Checked)
+                                            goto Cancel;
+                                    }
                                 }
                             }
                             else
                             {
                                 // Only remove the clicked color if it was not a picked color.
-                                if (color == GetCustomColor)
+                                if (color.ToArgb() == GetCustomColor.ToArgb())
                                 {
                                     // Confirm to skip adding this entry.
                                     if (MessageBox.Show($"Do you want to remove the following block?\n\n" +
@@ -829,6 +834,12 @@ namespace WE_ImageToPixelart
                                                         $"Was Picked: '{entry.WasPicked}'",
                                                         "Confirm", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes
                                     ) continue;
+                                    {
+                                        // Cancel searching after first match.
+                                        // If using unique colors, there will only be one match.
+                                        if (UniqueColors.Checked)
+                                            goto Cancel;
+                                    }
                                 }
                             }
 
@@ -2139,7 +2150,7 @@ namespace WE_ImageToPixelart
             var dataList = new List<BlockData>();
 
             var doc = await Task.Run(() => XDocument.Load(filePath));
-            var elements = doc.Descendants("Block").ToList(); // Change from "Block"/"Wall" to "Block"
+            var elements = doc.Descendants("Block").ToList();
 
             int totalElements = elements.Count;
             for (int i = 0; i < totalElements; i++)
@@ -2153,7 +2164,7 @@ namespace WE_ImageToPixelart
                 };
                 dataList.Add(data);
 
-                // Report progress
+                // Report progress.
                 progress?.Report((i + 1) * 100 / totalElements);
             }
 
@@ -2165,7 +2176,7 @@ namespace WE_ImageToPixelart
             var dataList = new List<BlockData>();
 
             var doc = await Task.Run(() => XDocument.Load(stream));
-            var elements = doc.Descendants("Block").ToList(); // Change from "Block"/"Wall" to "Block"
+            var elements = doc.Descendants("Block").ToList();
 
             int totalElements = elements.Count;
             for (int i = 0; i < totalElements; i++)
@@ -2179,7 +2190,7 @@ namespace WE_ImageToPixelart
                 };
                 dataList.Add(data);
 
-                // Report progress
+                // Report progress.
                 progress?.Report((i + 1) * 100 / totalElements);
             }
 
