@@ -206,6 +206,9 @@ namespace DNA.CastleMinerZ.UI
                 case "/cube":
                     ExecuteCube(parts.Skip(1).ToArray());
                     break;
+                case "/prism":
+                    ExecutePrism(parts.Skip(1).ToArray());
+                    break;                    
                 case "/sphere":
                     ExecuteSphere(parts.Skip(1).ToArray());
                     break;
@@ -302,9 +305,9 @@ namespace DNA.CastleMinerZ.UI
             // Region Commands.
             ("set [block(,array)] (hollow)",                                       "Sets all the blocks in the region."),
             ("line [block(,array)] (thickness)",                                   "Draws line segments between two positions."),
-            ("replace [source block,(all)] [block(,array)]",                       "Replace all blocks in the selection with another."),
+            ("replace [source block,(all)] [to block,(all)]",                      "Replace all blocks in the selection with another."),
             ("allexcept [source block(,array)] (to block(,array))",                "Replace all blocks except a desired block pattern."),
-            ("massreplace [radii] [source block,(all)] [to block(,array)]",        "Replace all blocks within a circular radii with another."),
+            ("massreplace [radii] [source block,(all)] [to block,(all)]",          "Replace all blocks within a circular radii with another."),
             ("walls [block(,array)]",                                              "Build the four sides of the selection."),
             ("smooth (iterations)",                                                "Smooth the elevation in the selection."),
             ("stack (amount)",                                                     "Repeat the contents of the selection."),
@@ -320,8 +323,9 @@ namespace DNA.CastleMinerZ.UI
             // Generation Commands.
             ("floor [block(,array)] [radius] (hollow)",                            "Makes a filled floor."),
             ("cube [block(,array)] [radii] (hollow)",                              "Makes a filled cube."),
+            ("prism [block(,array)] [length] [width] (height) (hollow)",           "Makes a filled prism."),
             ("sphere [block(,array)] [radii] (hollow) (height)",                   "Makes a filled sphere."),
-            ("pyramid [block(,array)] [size] (hollow)",                            "Makes a filled pryamid."),
+            ("pyramid [block(,array)] [size] (hollow)",                            "Makes a filled pyramid."),
             ("cone [block(,array)] [radii] [height] (hollow)",                     "Makes a filled cone."),
             ("cylinder [block(,array)] [radii] [height] (hollow)",                 "Makes a filled cylinder."),
             ("diamond [r block(,array)] [radii] (hollow) (squared)",               "Makes a filled diamond."),
@@ -1061,9 +1065,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -1138,9 +1142,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -1187,7 +1191,7 @@ namespace DNA.CastleMinerZ.UI
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("ERROR: Command usage /replace [source block,(all)] [block(,array)]");
+                Console.WriteLine("ERROR: Command usage /replace [source block,(all)] [to block,(all)]");
                 return;
             }
 
@@ -1198,26 +1202,26 @@ namespace DNA.CastleMinerZ.UI
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
                 searchPattern = (searchPattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern);
-                replacePattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
+                replacePattern = (replacePattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
 
                 // Make sure the input is within the min/max.
                 int[] searchPatternNumbers = (searchPattern == "all") ? new int[1] : (!string.IsNullOrEmpty(searchPattern)) ? searchPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (searchPatternNumbers.Length == 0 || searchPatternNumbers.Min() < ItemIDValues.Item1 || searchPatternNumbers.Max() > ItemIDValues.Item2)
+                if (searchPatternNumbers.Length == 0 || searchPatternNumbers.Min() < BlockIDValues.Item1 || searchPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
-                int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < ItemIDValues.Item1 || replacePatternNumbers.Max() > ItemIDValues.Item2)
+                int[] replacePatternNumbers = (replacePattern == "all") ? new int[1] : (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
 
-                // Use fill region to define a rectangular area to seach in.
+                // Use fill region to define a rectangular area to search in.
                 // FillRegion(Region region, bool hollow, int ignoreBlock = -1).
                 var region = FillRegion(definedRegion, false);
 
@@ -1238,7 +1242,8 @@ namespace DNA.CastleMinerZ.UI
                     if ((searchPattern == "all" && currentBlock != 0) || currentBlock.ToString() == searchPattern) // Make sure not to replace 'air' when using 'all' mode.
                     {
                         // Get random block from input.
-                        int replaceBlock = GetRandomBlockFromPattern(replacePattern);
+                        HashSet<int> excludedBlocks = new HashSet<int> { 0, 26 }; // IDs to exclude. Block ID 26 'Torch' crashes.
+                        int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePattern);
 
                         // Place block if it doesn't already exist. (improves the performance) 
                         if (GetBlockFromLocation(i) != replaceBlock)
@@ -1283,22 +1288,22 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] exceptPatternNumbers = (!string.IsNullOrEmpty(exceptPattern)) ? exceptPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (exceptPatternNumbers.Length == 0 || exceptPatternNumbers.Min() < ItemIDValues.Item1 || exceptPatternNumbers.Max() > ItemIDValues.Item2)
+                if (exceptPatternNumbers.Length == 0 || exceptPatternNumbers.Min() < BlockIDValues.Item1 || exceptPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
                 int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < ItemIDValues.Item1 || replacePatternNumbers.Max() > ItemIDValues.Item2)
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
 
-                // Use fill region to define a rectangular area to seach in.
+                // Use fill region to define a rectangular area to search in.
                 // FillRegion(Region region, bool hollow, int ignoreBlock = -1).
                 var region = FillRegion(definedRegion, false);
 
@@ -1349,7 +1354,7 @@ namespace DNA.CastleMinerZ.UI
         {
             if (args.Length < 3)
             {
-                Console.WriteLine("ERROR: Command usage /massreplace [radii] [source block,(all)] [to block(,array)]");
+                Console.WriteLine("ERROR: Command usage /massreplace [radii] [source block,(all)] [to block,(all)]");
                 return;
             }
 
@@ -1361,19 +1366,19 @@ namespace DNA.CastleMinerZ.UI
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
                 searchPattern = (searchPattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern);
-                replacePattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
+                replacePattern = (replacePattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
 
                 // Make sure the input is within the min/max.
                 int[] searchPatternNumbers = (searchPattern == "all") ? new int[1] : (!string.IsNullOrEmpty(searchPattern)) ? searchPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (searchPatternNumbers.Length == 0 || searchPatternNumbers.Min() < ItemIDValues.Item1 || searchPatternNumbers.Max() > ItemIDValues.Item2)
+                if (searchPatternNumbers.Length == 0 || searchPatternNumbers.Min() < BlockIDValues.Item1 || searchPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
-                int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < ItemIDValues.Item1 || replacePatternNumbers.Max() > ItemIDValues.Item2)
+                int[] replacePatternNumbers = (replacePattern == "all") ? new int[1] : (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -1404,7 +1409,8 @@ namespace DNA.CastleMinerZ.UI
                     if ((searchPattern == "all" && currentBlock != 0) || currentBlock.ToString() == searchPattern) // Make sure not to replace 'air' when using 'all' mode.
                     {
                         // Get random block from input.
-                        int replaceBlock = GetRandomBlockFromPattern(replacePattern);
+                        HashSet<int> excludedBlocks = new HashSet<int> { 0, 26 }; // IDs to exclude. Block ID 26 'Torch' crashes.
+                        int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePattern);
 
                         // Place block if it doesn't already exist. (improves the performance) 
                         if (GetBlockFromLocation(i) != replaceBlock)
@@ -1447,9 +1453,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -1614,9 +1620,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -1668,9 +1674,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < ItemIDValues.Item1 || replacePatternNumbers.Max() > ItemIDValues.Item2)
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -1731,9 +1737,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < ItemIDValues.Item1 || replacePatternNumbers.Max() > ItemIDValues.Item2)
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -1795,9 +1801,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < ItemIDValues.Item1 || replacePatternNumbers.Max() > ItemIDValues.Item2)
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -1868,9 +1874,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] optionalBlockPatternNumbers = (!string.IsNullOrEmpty(optionalBlockPattern)) ? optionalBlockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (optionalBlockPatternNumbers.Length == 0 || optionalBlockPatternNumbers.Min() < ItemIDValues.Item1 || optionalBlockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (optionalBlockPatternNumbers.Length == 0 || optionalBlockPatternNumbers.Min() < BlockIDValues.Item1 || optionalBlockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -1930,9 +1936,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -2093,9 +2099,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -2154,14 +2160,77 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
                 // MakeCube(Vector3 pos, int radii, bool hollow, int ignoreBlock = -1).
                 var region = MakeCube(_pointToLocation1, radii, hollow);
+
+                // Save the existing region and clear the upcoming redo.
+                SaveUndo(region);
+                ClearRedo();
+
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                foreach (Vector3 i in region)
+                {
+                    // Get random block from input.
+                    int block = GetRandomBlockFromPattern(blockPattern);
+
+                    // Place block if it doesn't already exist. (improves the performance)
+                    if (GetBlockFromLocation(i) != block)
+                    {
+                        PlaceBlock(i, block);
+
+                        // Add block to redo.
+                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                    }
+                }
+
+                // Save the actions to undo stack.
+                SaveUndo(redoBuilder);
+
+                Console.WriteLine($"{region.Count} blocks have been replaced!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region /prism
+        private static void ExecutePrism(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.WriteLine("ERROR: Command usage /prism [block(,array)] [length] [width] (height) (hollow)");
+                return;
+            }
+
+            try
+            {
+                string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
+                int length = int.TryParse(args[1], out int l) ? l : 10;
+                int width = int.TryParse(args[2], out int w) ? w : 5;
+                int height = args.Length > 3 && int.TryParse(args[3], out int h) ? h : -1; // If not specified, make the triangle equilateral.
+                bool hollow = args.Length > 4 && args[4].Equals("true", StringComparison.OrdinalIgnoreCase);
+
+                // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
+                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
+
+                // Make sure the input is within the min/max.
+                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                {
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    return;
+                }
+
+                // MakeTriangularPrism(Vector3 pos, int length, int width, int height, bool hollow, int ignoreBlock = -1).
+                var region = MakeTriangularPrism(_pointToLocation1, length, width, height, hollow);
 
                 // Save the existing region and clear the upcoming redo.
                 SaveUndo(region);
@@ -2216,9 +2285,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -2277,9 +2346,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -2339,9 +2408,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -2401,9 +2470,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -2463,9 +2532,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -2524,9 +2593,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -2585,9 +2654,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
@@ -3042,9 +3111,9 @@ namespace DNA.CastleMinerZ.UI
 
                             // Make sure the input is within the min/max.
                             int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                            if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                            if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                             {
-                                Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                                Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                                 return;
                             }
 
@@ -3086,9 +3155,9 @@ namespace DNA.CastleMinerZ.UI
 
                             // Make sure the input is within the min/max.
                             int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                            if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < ItemIDValues.Item1 || blockPatternNumbers.Max() > ItemIDValues.Item2)
+                            if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
                             {
-                                Console.WriteLine($"Block IDs are out of range. (min: {ItemIDValues.Item1}, max: {ItemIDValues.Item2})");
+                                Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                                 return;
                             }
 
@@ -3404,6 +3473,10 @@ namespace DNA.CastleMinerZ.UI
 
                             case "cube":
                                 tempRegion = (_brushReplaceMode) ? MakeCube(buildLocation, _brushSize, _brushHollow, ignoreBlock: AirID) : MakeCube(buildLocation, _brushSize, _brushHollow);
+                                break;
+
+                            case "prism":
+                                tempRegion = (_brushReplaceMode) ? MakeTriangularPrism(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow, ignoreBlock: AirID) : MakeTriangularPrism(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow);
                                 break;
 
                             case "sphere":

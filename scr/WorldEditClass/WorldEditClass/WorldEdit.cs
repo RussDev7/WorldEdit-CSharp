@@ -40,7 +40,7 @@ public class WorldEdit
     /// Class Definitions:
     /// 
     /// 'WorldHeights'
-    /// 'ItemIDValues'
+    /// 'BlockIDValues'
     /// 'AirID'
     /// 'LogID'
     /// 'LeavesID'
@@ -61,7 +61,7 @@ public class WorldEdit
     /// 
     /// </summary>
 
-    // You need to implement 'WorldHeights', 'ItemIDValues', 'AirID', 'LogID', 'LeavesID', and 'WandItemID' support manually!
+    // You need to implement 'WorldHeights', 'BlockIDValues', 'AirID', 'LogID', 'LeavesID', and 'WandItemID' support manually!
     #region Class Definitions
 
     /// <summary>
@@ -71,7 +71,7 @@ public class WorldEdit
     /// </summary>
 
     public static Tuple<int, int> WorldHeights = new Tuple<int, int>(64, -64); // Top -> Bottom.
-    public static Tuple<int, int> ItemIDValues = new Tuple<int, int>(0, 93);   // Min -> Max.
+    public static Tuple<int, int> BlockIDValues = new Tuple<int, int>(0, 93);  // Min -> Max.
     public static int AirID = 0;
     public static int LogID = 17;
     public static int LeavesID = 18;
@@ -225,6 +225,33 @@ public class WorldEdit
             }
         }
 
+        public static int GetRandomBlock(HashSet<int> exclusionList)
+        {
+            // Define the min and max from the block definition.
+            int min = BlockIDValues.Item1;
+            int max = BlockIDValues.Item2;
+
+            using (var rng = new RNGCryptoServiceProvider())
+            {
+                var data = new byte[8];
+
+                while (true)
+                {
+                    rng.GetBytes(data);
+                    int generatedValue = Math.Abs(BitConverter.ToInt32(data, 0));
+                    int diff = max - min;
+                    int mod = generatedValue % diff;
+                    int normalizedNumber = min + mod;
+        
+                    // Return if the number is not in the exclusion list.
+                    if (!exclusionList.Contains(normalizedNumber))
+                    {
+                        return normalizedNumber;
+                    }
+                }
+            }
+        }
+
         public static int GenerateRandomNumber(int min, int max)
         {
             // Ensure that the input values are valid.
@@ -279,7 +306,7 @@ public class WorldEdit
         // Check if the shape is valid.
         public static bool IsValidBrushShape(string shape)
         {
-            return shape == "floor" || shape == "cube" || shape == "sphere" || shape == "ring" || shape == "pyramid" || shape == "cone" || shape == "cylinder" || shape == "diamond" || shape == "tree" || shape == "snow"|| shape == "schem" || shape == "floodfill";
+            return shape == "floor" || shape == "cube" || shape == "prism" || shape == "sphere" || shape == "ring" || shape == "pyramid" || shape == "cone" || shape == "cylinder" || shape == "diamond" || shape == "tree" || shape == "snow"|| shape == "schem" || shape == "floodfill";
         }
         #endregion
 
@@ -385,7 +412,7 @@ public class WorldEdit
                 return Convert.ToInt32(result);
             }
 
-            return ItemIDValues.Item1; // Return the minimum ID (or invalid value) if not found.
+            return BlockIDValues.Item1; // Return the minimum ID (or invalid value) if not found.
         }
 
         // Levenshtein Distance Algorithm.
@@ -2339,6 +2366,7 @@ public class WorldEdit
     /// 
     /// 'Floor'
     /// 'Cube'
+    /// 'Prism'
     /// 'Sphere'
     /// 'Pyramid'
     /// 'Cone'
@@ -2409,6 +2437,103 @@ public class WorldEdit
         }
 
         return cubeBlocks;
+    }
+    #endregion
+
+    #region Prism
+
+    public static HashSet<Vector3> MakeTriangularPrism(Vector3 pos, int length, int width, int height, bool hollow, int ignoreBlock = -1)
+    {
+        HashSet<Vector3> blocks = new HashSet<Vector3>();
+
+        // Decide whether to rotate the triangle:
+        // When rotated, the triangle's cross-section is drawn on the Z–Y plane (base along Z) and extruded along X.
+        bool rotate = length < width;
+
+        // If height isn't specified, compute the equilateral triangle height.
+        // In the non-rotated case, the base is 'width'; in the rotated case, the base is 'length'.
+        if (height == -1)
+        {
+            int baseLength = rotate ? length : width;
+            height = baseLength / 2;
+        }
+
+        // In both cases, Y is anchored at pos.Y (bottom) and goes upward to pos.Y + height.
+        // The extrusion axis (Z in non-rotated, X in rotated) is centered on pos.
+        if (!rotate)
+        {
+            // Non-rotated: triangle drawn on X–Y, extruded along Z.
+            int halfWidth = width / 2;    // Half the triangle's base (X direction).
+            int halfExtrude = length / 2; // Half the extrusion along Z.
+
+            // Y: from pos.Y (base) up to pos.Y + height (apex).
+            for (int y = (int)pos.Y; y <= (int)pos.Y + height; y++)
+            {
+                // Determine progress up the triangle: 0 at base, 1 at apex.
+                double relative = (double)(y - pos.Y) / height;
+                // Allowed half-width shrinks linearly to 0 at the apex.
+                int currentHalfWidth = (int)Math.Round(halfWidth * (1 - relative));
+
+                // X: centered on pos.X.
+                for (int x = (int)pos.X - currentHalfWidth; x <= (int)pos.X + currentHalfWidth; x++)
+                {
+                    // Z: extrusion axis, centered on pos.Z.
+                    for (int z = (int)pos.Z - halfExtrude; z <= (int)pos.Z + halfExtrude; z++)
+                    {
+                        if (hollow)
+                        {
+                            // Only include boundary blocks.
+                            bool isEdge = (y == pos.Y || y == pos.Y + height ||
+                                           x == pos.X - currentHalfWidth || x == pos.X + currentHalfWidth ||
+                                           z == pos.Z - halfExtrude || z == pos.Z + halfExtrude);
+                            if (!isEdge)
+                                continue;
+                        }
+                        if (y > WorldHeights.Item1 || y < WorldHeights.Item2)
+                            continue;
+                        Vector3 newPos = new Vector3(x, y, z);
+                        if (ignoreBlock == -1 || GetBlockFromLocation(newPos) != ignoreBlock)
+                            blocks.Add(newPos);
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Rotated: triangle drawn on Z–Y, extruded along X.
+            int halfBase = length / 2;   // Half the triangle's base (Z direction).
+            int halfExtrude = width / 2; // Half the extrusion along X.
+
+            for (int y = (int)pos.Y; y <= (int)pos.Y + height; y++)
+            {
+                double relative = (double)(y - pos.Y) / height;
+                int currentHalfBase = (int)Math.Round(halfBase * (1 - relative));
+
+                // Z: triangle is drawn on the Z axis, centered on pos.Z.
+                for (int z = (int)pos.Z - currentHalfBase; z <= (int)pos.Z + currentHalfBase; z++)
+                {
+                    // X: extrusion axis, centered on pos.X.
+                    for (int x = (int)pos.X - halfExtrude; x <= (int)pos.X + halfExtrude; x++)
+                    {
+                        if (hollow)
+                        {
+                            bool isEdge = (y == pos.Y || y == pos.Y + height ||
+                                           z == pos.Z - currentHalfBase || z == pos.Z + currentHalfBase ||
+                                           x == pos.X - halfExtrude || x == pos.X + halfExtrude);
+                            if (!isEdge)
+                                continue;
+                        }
+                        if (y > WorldHeights.Item1 || y < WorldHeights.Item2)
+                            continue;
+                        Vector3 newPos = new Vector3(x, y, z);
+                        if (ignoreBlock == -1 || GetBlockFromLocation(newPos) != ignoreBlock)
+                            blocks.Add(newPos);
+                    }
+                }
+            }
+        }
+
+        return blocks;
     }
     #endregion
 
