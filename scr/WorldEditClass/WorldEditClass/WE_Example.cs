@@ -78,196 +78,79 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
-        #region Chat Command Prefixes
+        #region Chat Command Handler
+
+        private Dictionary<string, Action<string[]>> commandMap;
+        [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+        public class CommandAttribute : Attribute
+        {
+            public string Name { get; }
+
+            public CommandAttribute(string name)
+            {
+                Name = name.ToLower();
+            }
+        }
 
         private void HandleChatCommand(string command)
         {
+            InitializeCommands(); // Lazy initialization
+
             string[] parts = command.Split(new string[] { " " }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 0) return;
 
-            switch (parts[0].ToLower())
+            string cmd = parts[0].ToLower();
+            string[] args = parts.Skip(1).ToArray();
+
+            if (commandMap.TryGetValue(cmd, out var action))
             {
-                // Showcasing Commands.
-                case "/cc":
-                    ExecuteCC();
-                    break;
-                case "/brightness":
-                    ExecuteBrightness(parts.Skip(1).ToArray());
-                    break;
-                case "/tp":
-                    ExecuteTP(parts.Skip(1).ToArray());
-                    break;
-                case "/time":
-                    ExecuteTime(parts.Skip(1).ToArray());
-                    break;
-                case "/toggleui":
-                    ExecuteToggleUI();
-                    break;
+                action.Invoke(args);
+            }
+            else
+            {
+                Console.WriteLine("Unknown Command.");
+            }
+        }
 
-                // General Commands.
-                case "/help":
-                    ExecuteHelp(parts.Skip(1).ToArray());
-                    break;
-                case "/undo":
-                    ExecuteUndo(parts.Skip(1).ToArray());
-                    break;
-                case "/redo":
-                    ExecuteRedo(parts.Skip(1).ToArray());
-                    break;
+        private void InitializeCommands()
+        {
+            if (commandMap != null)
+                return;
 
-                // Navigation Commands.
-                case "/unstuck":
-                    ExecuteUnstuck();
-                    break;
-                case "/ascend":
-                    ExecuteAscend(parts.Skip(1).ToArray());
-                    break;
-                case "/descend":
-                    ExecuteDescend(parts.Skip(1).ToArray());
-                    break;
-                case "/ceil":
-                    ExecuteCeil();
-                    break;
-                case "/thru":
-                    ExecuteThru();
-                    break;
-                case "/jump":
-                    ExecuteJump();
-                    break;
-                case "/up":
-                    ExecuteUp(parts.Skip(1).ToArray());
-                    break;
-                case "/down":
-                    ExecuteDown(parts.Skip(1).ToArray());
-                    break;
+            commandMap = new Dictionary<string, Action<string[]>>(StringComparer.OrdinalIgnoreCase);
 
-                // Selection Commands.
-                case "/wand":
-                    ExecuteWand(parts.Skip(1).ToArray());
-                    break;
-                case "/pos":
-                    ExecutePos(parts.Skip(1).ToArray());
-                    break;
+            var methods = GetType().GetMethods(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
+            foreach (var method in methods)
+            {
+                if (method.GetCustomAttributes(typeof(CommandAttribute), false) is CommandAttribute[] attributes)
+                {
+                    foreach (var attr in attributes)
+                    {
+                        if (commandMap.ContainsKey(attr.Name))
+                        {
+                            Console.WriteLine($"Warning: Duplicate command alias detected: {attr.Name}");
+                            continue;
+                        }
 
-                // Region Commands.
-                case "/set":
-                    ExecuteSet(parts.Skip(1).ToArray());
-                    break;
-                case "/line":
-                    ExecuteLine(parts.Skip(1).ToArray());
-                    break;
-                case "/replace":
-                    ExecuteReplace(parts.Skip(1).ToArray());
-                    break;
-                case "/allexcept":
-                    ExecuteAllExcept(parts.Skip(1).ToArray());
-                    break;
-                case "/massreplace":
-                    ExecuteMassReplace(parts.Skip(1).ToArray());
-                    break;
-                case "/walls":
-                    ExecuteWalls(parts.Skip(1).ToArray());
-                    break;
-                case "/smooth":
-                    ExecuteSmooth(parts.Skip(1).ToArray());
-                    break;
-                case "/stack":
-                    ExecuteStack(parts.Skip(1).ToArray());
-                    break;
-                case "/spell":
-                    ExecuteSpell(parts.Skip(1).ToArray());
-                    break;
-                case "/hollow":
-                    ExecuteHollow(parts.Skip(1).ToArray());
-                    break;
-                case "/fill":
-                    ExecuteFill(parts.Skip(1).ToArray());
-                    break;
-                case "/wrap":
-                    ExecuteWrap(parts.Skip(1).ToArray());
-                    break;
-                case "/matrix":
-                    ExecuteMatrix(parts.Skip(1).ToArray());
-                    break;
-                case "/snow":
-                    ExecuteSnow(parts.Skip(1).ToArray());
-                    break;
-                case "/forest":
-                    ExecuteForest(parts.Skip(1).ToArray());
-                    break;
-                case "/tree":
-                    ExecuteTree(parts.Skip(1).ToArray());
-                    break;
+                        // Handle static vs instance
+                        object target = method.IsStatic ? null : this;
 
-                // Generation Commands.
-                case "/floor":
-                    ExecuteFloor(parts.Skip(1).ToArray());
-                    break;
-                case "/cube":
-                    ExecuteCube(parts.Skip(1).ToArray());
-                    break;
-                case "/prism":
-                    ExecutePrism(parts.Skip(1).ToArray());
-                    break;                    
-                case "/sphere":
-                    ExecuteSphere(parts.Skip(1).ToArray());
-                    break;
-                case "/pyramid":
-                    ExecutePyramid(parts.Skip(1).ToArray());
-                    break;
-                case "/cone":
-                    ExecuteCone(parts.Skip(1).ToArray());
-                    break;
-                case "/cylinder":
-                    ExecuteCylinder(parts.Skip(1).ToArray());
-                    break;
-                case "/diamond":
-                    ExecuteDiamond(parts.Skip(1).ToArray());
-                    break;
-                case "/ring":
-                    ExecuteRing(parts.Skip(1).ToArray());
-                    break;
-                case "/ringarray":
-                    ExecuteRingArray(parts.Skip(1).ToArray());
-                    break;
-
-                // Schematic and Clipboard Commands.
-                case "/schem":
-                    ExecuteSchem(parts.Skip(1).ToArray());
-                    break;
-                case "/copy":
-                    ExecuteCopy();
-                    break;
-                case "/cut":
-                    ExecuteCut();
-                    break;
-                case "/paste":
-                    ExecutePaste(parts.Skip(1).ToArray());
-                    break;
-                case "/rotate":
-                    ExecuteRotate(parts.Skip(1).ToArray());
-                    break;
-                case "/flip":
-                    ExecuteFlip(parts.Skip(1).ToArray());
-                    break;
-                case "/clearclipboard":
-                    ExecuteClearClipboard();
-                    break;
-
-                // Tool Commands.
-                case "/tool":
-                    ExecuteTool(parts.Skip(1).ToArray());
-                    break;
-
-                // Brush Commands.
-                case "/brush":
-                    ExecuteBrush(parts.Skip(1).ToArray());
-                    break;
-
-                // Catch Unknown Commands.
-                default:
-                    Console.WriteLine("Unknown Command.");
-                    break;
+                        // Handle parameterless methods
+                        if (method.GetParameters().Length == 0)
+                        {
+                            commandMap[attr.Name] = (args) => method.Invoke(target, null);
+                        }
+                        // Handle string[] args methods
+                        else if (method.GetParameters().Length == 1 && method.GetParameters()[0].ParameterType == typeof(string[]))
+                        {
+                            commandMap[attr.Name] = (args) => method.Invoke(target, new object[] { args });
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Warning: Command '{attr.Name}' has unsupported signature.");
+                        }
+                    }
+                }
             }
         }
         #endregion
@@ -279,7 +162,7 @@ namespace DNA.CastleMinerZ.UI
             // Showcasing Commands.
             ("cc",                                                                 "Clears the chat. This was made for showcasing."),
             ("brightness [amount]",                                                "Change the brightness. Use '1' for default. This was made for showcasing."),
-            ("tp [x] [y] [z]",                                                     "Teleport the player to a new position."),
+            ("teleport [x] [y] [z]",                                               "Teleport the player to a new position."),
             ("time [time]",                                                        "Change the worlds time. Use 0-100 for time of day."),
             ("toggleui",                                                           "Toggles the HUD and UI visibility."),
 
@@ -294,7 +177,7 @@ namespace DNA.CastleMinerZ.UI
             ("descend (levels)",                                                   "Go down a floor."),
             ("ceil",                                                               "Go to the ceiling."),
             ("thru",                                                               "Pass through walls."),
-            ("jump",                                                               "Teleport to the cursors location."),
+            ("jumpto",                                                             "Teleport to the cursors location."),
             ("up [amount]",                                                        "Go upwards some distance."),
             ("down [amount]",                                                      "Go downwards some distance."),
 
@@ -333,8 +216,8 @@ namespace DNA.CastleMinerZ.UI
             ("ringarray [block(,array)] [amount] [space]",                         "Makes a hollowed ring at evenly spaced intervals."),
 
             // Schematic and Clipboard Commands.
-            ("schem [save] (saveAir)",                                             "Save your clipboard into a schematic file."),
-            ("schem [load] (loadAir)",                                             "Load a schematic into your clipboard."),
+            ("schematic [save] (saveAir)",                                         "Save your clipboard into a schematic file."),
+            ("schematic [load] (loadAir)",                                         "Load a schematic into your clipboard."),
             ("copy",                                                               "Copy the selection to the clipboard."),
             ("cut",                                                                "Cut the selection to the clipboard."),
             ("paste (useAir)",                                                     "Paste the clipboard’s contents."),
@@ -365,6 +248,8 @@ namespace DNA.CastleMinerZ.UI
         #region SHOWCASING COMMANDS ONLY - Remove this category from your project.
 
         #region /cc
+
+        [Command("/cc")]
         private static void ExecuteCC()
         {
             try
@@ -381,6 +266,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /brightness
+
+        [Command("/brightness")]
         private static void ExecuteBrightness(string[] args)
         {
             if (args.Length < 1)
@@ -417,12 +304,15 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
-        #region /tp
-        private static void ExecuteTP(string[] args)
+        #region /teleport
+
+        [Command("/teleport")]
+        [Command("/tp")]
+        private static void ExecuteTeleport(string[] args)
         {
             if (args.Length < 3)
             {
-                Console.WriteLine("ERROR: Command usage /tp [x] [y] [z]");
+                Console.WriteLine("ERROR: Command usage /teleport [x] [y] [z]");
                 return;
             }
 
@@ -449,6 +339,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /time
+
+        [Command("/time")]
         private static void ExecuteTime(string[] args)
         {
             if (args.Length < 1)
@@ -480,6 +372,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /toggleui
+
+        [Command("/toggleui")]
         private static void ExecuteToggleUI()
         {
             try
@@ -500,6 +394,8 @@ namespace DNA.CastleMinerZ.UI
         // General Commands.
 
         #region /help
+
+        [Command("/help")]
         private static void ExecuteHelp(string[] args)
         {
             int maxLinesPerPage = 7;
@@ -530,6 +426,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /undo
+
+        [Command("/undo")]
         private static void ExecuteUndo(string[] args)
         {
             try
@@ -580,6 +478,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /redo
+
+        [Command("/redo")]
         private static void ExecuteRedo(string[] args)
         {
             try
@@ -633,6 +533,8 @@ namespace DNA.CastleMinerZ.UI
 
         #region /unstuck
 
+        [Command("/unstuck")]
+        [Command("/!")]
         private static void ExecuteUnstuck()
         {
             try
@@ -693,6 +595,9 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /ascend
+
+        [Command("/ascend")]
+        [Command("/asc")]
         private static void ExecuteAscend(string[] args)
         {
             try
@@ -740,6 +645,9 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /decend
+
+        [Command("/descend")]
+        [Command("/desc")]
         private static void ExecuteDescend(string[] args)
         {
             try
@@ -787,6 +695,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /ceil
+
+        [Command("/ceil")]
         private static void ExecuteCeil()
         {
             try
@@ -814,6 +724,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /thru
+
+        [Command("/thru")]
         private static void ExecuteThru()
         {
             try
@@ -842,9 +754,12 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
-        #region /jump
+        #region /jumpto
         private static Vector3 lastJumpLocation = new Vector3(0, 0, 0); // Store the last jump location.
-        private static void ExecuteJump()
+
+        [Command("/jumpto")]
+        [Command("/j")]
+        private static void ExecuteJumpTo()
         {
             try
             {
@@ -861,6 +776,7 @@ namespace DNA.CastleMinerZ.UI
                     // Store this jump location.
                     lastJumpLocation = cursorLocation;
 
+                    // Feel free to comment this out. Can get annoying.
                     Console.WriteLine($"Teleported '{Math.Round(Vector3.Distance(usersLocation, cursorLocation))}' blocks away!");
                 }
                 // else
@@ -874,6 +790,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /up
+
+        [Command("/up")]
         private static async void ExecuteUp(string[] args)
         {
             if (args.Length < 1)
@@ -911,6 +829,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /down
+
+        [Command("/down")]
         private static async void ExecuteDown(string[] args)
         {
             if (args.Length < 1)
@@ -950,7 +870,9 @@ namespace DNA.CastleMinerZ.UI
         // Selection Commands.
 
         #region /wand
-        private void ExecuteWand(string[] args) // Dont give 'static' for tool command.
+
+        [Command("/wand")]
+        private void ExecuteWand(string[] args) // Don't give 'static' for tool command.
         {
             if (args.Length < 1)
             {
@@ -1013,6 +935,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /pos
+
+        [Command("/pos")]
         private static void ExecutePos(string[] args)
         {
             if (args.Length < 1)
@@ -1047,6 +971,8 @@ namespace DNA.CastleMinerZ.UI
         // Region Commands.
 
         #region /set
+
+        [Command("/set")]
         private static void ExecuteSet(string[] args)
         {
             if (args.Length < 1)
@@ -1124,6 +1050,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /line
+
+        [Command("/line")]
         private static void ExecuteLine(string[] args)
         {
             if (args.Length < 1)
@@ -1187,6 +1115,10 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /replace
+
+        [Command("/replace")]
+        [Command("/rep")]
+        [Command("/re")]
         private static void ExecuteReplace(string[] args)
         {
             if (args.Length < 2)
@@ -1269,6 +1201,9 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /allexcept
+
+        [Command("/allexcept")]
+        [Command("/allex")]
         private static void ExecuteAllExcept(string[] args)
         {
             if (args.Length < 1)
@@ -1350,6 +1285,9 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /massreplace
+
+        [Command("/massreplace")]
+        [Command("/massre")]
         private static void ExecuteMassReplace(string[] args)
         {
             if (args.Length < 3)
@@ -1436,6 +1374,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /walls
+
+        [Command("/walls")]
         private static void ExecuteWalls(string[] args)
         {
             if (args.Length < 1)
@@ -1498,6 +1438,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /smooth
+
+        [Command("/smooth")]
         private static void ExecuteSmooth(string[] args)
         {
             try
@@ -1545,6 +1487,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /stack
+
+        [Command("/stack")]
         private static void ExecuteStack(string[] args)
         {
             try
@@ -1600,6 +1544,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /spell
+
+        [Command("/spell")]
         private static void ExecuteSpell(string[] args)
         {
             if (args.Length < 2)
@@ -1662,6 +1608,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /hollow
+
+        [Command("/hollow")]
         private static void ExecuteHollow(string[] args)
         {
             try
@@ -1720,6 +1668,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /fill
+
+        [Command("/fill")]
         private static void ExecuteFill(string[] args)
         {
             if (args.Length < 1)
@@ -1783,6 +1733,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /wrap
+
+        [Command("/wrap")]
         private static void ExecuteWrap(string[] args)
         {
             if (args.Length < 1)
@@ -1847,6 +1799,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /matrix
+
+        [Command("/matrix")]
         private static void ExecuteMatrix(string[] args)
         {
             if (args.Length < 2)
@@ -1918,6 +1872,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /snow
+
+        [Command("/snow")]
         private static void ExecuteSnow(string[] args)
         {
             if (args.Length < 2)
@@ -1979,6 +1935,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /forest
+
+        [Command("/forest")]
         private static void ExecuteForest(string[] args)
         {
             if (args.Length < 1)
@@ -2034,6 +1992,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /tree
+
+        [Command("/tree")]
         private static void ExecuteTree(string[] args)
         {
             try
@@ -2080,6 +2040,8 @@ namespace DNA.CastleMinerZ.UI
         // Generation Commands.
 
         #region /floor
+
+        [Command("/floor")]
         private static void ExecuteFloor(string[] args)
         {
             if (args.Length < 2)
@@ -2141,6 +2103,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /cube
+
+        [Command("/cube")]
         private static void ExecuteCube(string[] args)
         {
             if (args.Length < 2)
@@ -2202,6 +2166,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /prism
+
+        [Command("/prism")]
         private static void ExecutePrism(string[] args)
         {
             if (args.Length < 3)
@@ -2265,6 +2231,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /sphere
+
+        [Command("/sphere")]
         private static void ExecuteSphere(string[] args)
         {
             if (args.Length < 2)
@@ -2327,6 +2295,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /pyramid
+
+        [Command("/pyramid")]
         private static void ExecutePyramid(string[] args)
         {
             if (args.Length < 2)
@@ -2388,6 +2358,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /cone
+
+        [Command("/cone")]
         private static void ExecuteCone(string[] args)
         {
             if (args.Length < 3)
@@ -2450,6 +2422,9 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /cylinder
+
+        [Command("/cylinder")]
+        [Command("/cyl")]
         private static void ExecuteCylinder(string[] args)
         {
             if (args.Length < 3)
@@ -2512,6 +2487,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /diamond
+
+        [Command("/diamond")]
         private static void ExecuteDiamond(string[] args)
         {
             if (args.Length < 2)
@@ -2574,6 +2551,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /ring
+
+        [Command("/ring")]
         private static void ExecuteRing(string[] args)
         {
             if (args.Length < 2)
@@ -2635,6 +2614,9 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /ringarray
+
+        [Command("/ringarray")]
+        [Command("/ringa")]
         private static void ExecuteRingArray(string[] args)
         {
             if (args.Length < 3)
@@ -2700,11 +2682,14 @@ namespace DNA.CastleMinerZ.UI
         // Schematic and Clipboard Commands.
 
         #region /schem
-        private static void ExecuteSchem(string[] args)
+
+        [Command("/schematic")]
+        [Command("/schem")]
+        private static void ExecuteSchematic(string[] args)
         {
             if (args.Length < 1)
             {
-                Console.WriteLine("ERROR: Command usage /schem [save/load] (useAir)");
+                Console.WriteLine("ERROR: Command usage /schematic [save/load] (useAir)");
                 return;
             }
 
@@ -2785,6 +2770,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /copy
+
+        [Command("/copy")]
         private static void ExecuteCopy()
         {
             try
@@ -2805,6 +2792,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /cut
+
+        [Command("/cut")]
         private static void ExecuteCut()
         {
             try
@@ -2851,6 +2840,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /paste
+
+        [Command("/paste")]
         private static void ExecutePaste(string[] args)
         {
             // Ensure the copied clipboard is full.
@@ -2906,6 +2897,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /rotate
+
+        [Command("/rotate")]
         private static void ExecuteRotate(string[] args)
         {
             // Ensure the copied clipboard is full.
@@ -2941,6 +2934,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /flip
+
+        [Command("/flip")]
         private static void ExecuteFlip(string[] args)
         {
             // Ensure the copied clipboard is full.
@@ -2986,6 +2981,8 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /clearclipboard
+
+        [Command("/clearclipboard")]
         private static void ExecuteClearClipboard()
         {
             try
@@ -3005,7 +3002,9 @@ namespace DNA.CastleMinerZ.UI
         // Tool Commands.
 
         #region /tool
-        private void ExecuteTool(string[] args) // Dont give 'static' for tool command.
+
+        [Command("/tool")]
+        private void ExecuteTool(string[] args) // Don't give 'static' for tool command.
         {
             if (args.Length < 1)
             {
@@ -3080,7 +3079,10 @@ namespace DNA.CastleMinerZ.UI
         // Brush Commands.
 
         #region /brush
-        private void ExecuteBrush(string[] args) // Dont give 'static' for tool command.
+
+        [Command("/brush")]
+        [Command("/br")]
+        private void ExecuteBrush(string[] args) // Don't give 'static' for tool command.
         {
             if (args.Length < 1)
             {
