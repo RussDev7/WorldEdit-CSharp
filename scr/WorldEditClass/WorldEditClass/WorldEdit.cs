@@ -17,6 +17,7 @@ GNU GENERAL PUBLIC LICENSE FOR MORE DETAILS.
 
 using System.Security.Cryptography;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Windows.Forms;
 using System.Numerics;
 using System.Linq;
@@ -70,8 +71,8 @@ public class WorldEdit
     /// 
     /// </summary>
 
-    public static Tuple<int, int> WorldHeights = new Tuple<int, int>(64, -64); // Top -> Bottom.
-    public static Tuple<int, int> BlockIDValues = new Tuple<int, int>(0, 93);  // Min -> Max.
+    public static Tuple<int, int> WorldHeights = new Tuple<int, int>(-64, 64); // Bottom -> Top.
+    public static Tuple<int, int> BlockIDValues = new Tuple<int, int>(0, 93);  // Min    -> Max.
     public static int AirID = 0;
     public static int LogID = 17;
     public static int LeavesID = 18;
@@ -322,12 +323,12 @@ public class WorldEdit
 
         public static bool IsWithinWorldBounds(Vector3 pos, int additionalHeight = 0, int additionalDepth = 0)
         {
-            return pos.Y <= (WorldHeights.Item1 + additionalHeight) && pos.Y >= (WorldHeights.Item2 - additionalDepth);
+            return pos.Y <= (WorldHeights.Item2 + additionalHeight) && pos.Y >= (WorldHeights.Item1 - additionalDepth);
         }
 
         public static bool IsWithinWorldBounds(int yPos, int additionalHeight = 0, int additionalDepth = 0)
         {
-            return yPos <= (WorldHeights.Item1 + additionalHeight) && yPos >= (WorldHeights.Item2 - additionalDepth);
+            return yPos <= (WorldHeights.Item2 + additionalHeight) && yPos >= (WorldHeights.Item1 - additionalDepth);
         }
 
         public static Vector3 GetRegionCenter()
@@ -584,6 +585,325 @@ public class WorldEdit
 
     /// <summary>
     /// 
+    /// Custom evaluator class for parsing math expressions.
+    /// 
+    /// </summary>
+    #region Math Expression Parsing Utilities
+
+    public enum TokenType { Number, Operator, Function, Variable, LeftParen, RightParen, Comma }
+
+    public class Token
+    {
+        public TokenType Type;
+        public string Value;
+        public double Number;
+        public Token(TokenType type, string value) { Type = type; Value = value; }
+        public Token(double number) { Type = TokenType.Number; Number = number; Value = number.ToString(CultureInfo.InvariantCulture); }
+    }
+
+    public class ExpressionEvaluator
+    {
+        private readonly string expr;
+
+        // Operator precedence: lower number = lower precedence.
+        private readonly Dictionary<string, int> opPrecedence = new Dictionary<string, int> {
+            {"==", 1}, {"!=", 1},
+            {"<", 2}, {"<=", 2}, {">", 2}, {">=", 2},
+            {"+", 3}, {"-", 3},
+            {"*", 4}, {"/", 4}, {"%", 4},
+            {"^", 5}
+        };
+
+        // Only exponentiation is right-associative.
+        private readonly Dictionary<string, bool> opRightAssoc = new Dictionary<string, bool> {
+            {"^", true}
+        };
+
+        // One-argument functions.
+        private readonly Dictionary<string, Func<double, double>> functions1 = new Dictionary<string, Func<double, double>> {
+            {"sqrt", Math.Sqrt},
+            {"sin", Math.Sin},
+            {"cos", Math.Cos},
+            {"tan", Math.Tan},
+            {"atan", Math.Atan},
+            {"neg", a => -a}, // Our unary minus function.
+            {"abs", Math.Abs}
+        };
+
+        // Two-argument functions.
+        private readonly Dictionary<string, Func<double, double, double>> functions2 = new Dictionary<string, Func<double, double, double>> {
+            {"atan2", Math.Atan2},
+            {"min", Math.Min},
+            {"max", Math.Max}
+        };
+
+        public ExpressionEvaluator(string expression)
+        {
+            expr = expression;
+        }
+
+        // Tokenize the expression into a list of tokens.
+        // This version detects unary '+' and '-' by looking at the previous token.
+        private List<Token> Tokenize()
+        {
+            List<Token> tokens = new List<Token>();
+            Token lastToken = null;
+            int i = 0;
+            while (i < expr.Length)
+            {
+                char c = expr[i];
+                if (char.IsWhiteSpace(c)) { i++; continue; }
+                // Number (including decimals)
+                if (char.IsDigit(c) || c == '.')
+                {
+                    int start = i;
+                    while (i < expr.Length && (char.IsDigit(expr[i]) || expr[i] == '.'))
+                        i++;
+                    double num = double.Parse(expr.Substring(start, i - start), CultureInfo.InvariantCulture);
+                    var t = new Token(num);
+                    tokens.Add(t);
+                    lastToken = t;
+                    continue;
+                }
+                // Identifier: variable or function name.
+                if (char.IsLetter(c))
+                {
+                    int start = i;
+                    while (i < expr.Length && (char.IsLetterOrDigit(expr[i]) || expr[i] == '_'))
+                        i++;
+                    string name = expr.Substring(start, i - start);
+                    // If immediately followed by '(' then it's a function.
+                    if (i < expr.Length && expr[i] == '(')
+                    {
+                        var t = new Token(TokenType.Function, name);
+                        tokens.Add(t);
+                        lastToken = t;
+                    }
+                    else
+                    {
+                        var t = new Token(TokenType.Variable, name);
+                        tokens.Add(t);
+                        lastToken = t;
+                    }
+                    continue;
+                }
+                // Parentheses and comma.
+                if (c == '(')
+                {
+                    tokens.Add(new Token(TokenType.LeftParen, "("));
+                    i++;
+                    lastToken = new Token(TokenType.LeftParen, "(");
+                    continue;
+                }
+                if (c == ')')
+                {
+                    tokens.Add(new Token(TokenType.RightParen, ")"));
+                    i++;
+                    lastToken = new Token(TokenType.RightParen, ")");
+                    continue;
+                }
+                if (c == ',')
+                {
+                    tokens.Add(new Token(TokenType.Comma, ","));
+                    i++;
+                    lastToken = new Token(TokenType.Comma, ",");
+                    continue;
+                }
+                // Operators (handle multi-character ones first).
+                string op = null;
+                // Check for two-character operator.
+                if (i + 1 < expr.Length)
+                {
+                    string two = expr.Substring(i, 2);
+                    if (two == "<=" || two == ">=" || two == "==" || two == "!=")
+                    {
+                        op = two;
+                        i += 2;
+                    }
+                }
+                if (op == null)
+                {
+                    op = c.ToString();
+                    i++;
+                }
+                // Check if this operator is unary.
+                // It's unary if it's '+' or '-' and either it's at the start, or the previous token is:
+                // an operator, left parenthesis, or comma.
+                if ((op == "+" || op == "-") && (lastToken == null ||
+                      lastToken.Type == TokenType.Operator ||
+                      lastToken.Type == TokenType.LeftParen ||
+                      lastToken.Type == TokenType.Comma))
+                {
+                    // For unary '+', we simply ignore it.
+                    if (op == "+")
+                    {
+                        // Do nothing.
+                        continue;
+                    }
+                    else
+                    {
+                        // For unary '-', replace it with the "neg" function.
+                        var t = new Token(TokenType.Function, "neg");
+                        tokens.Add(t);
+                        lastToken = t;
+                        continue;
+                    }
+                }
+                else
+                {
+                    var t = new Token(TokenType.Operator, op);
+                    tokens.Add(t);
+                    lastToken = t;
+                }
+            }
+            return tokens;
+        }
+
+        // Convert tokens from infix to Reverse Polish Notation using the shunting-yard algorithm.
+        private List<Token> ToRPN(List<Token> tokens)
+        {
+            List<Token> output = new List<Token>();
+            Stack<Token> stack = new Stack<Token>();
+            foreach (var token in tokens)
+            {
+                switch (token.Type)
+                {
+                    case TokenType.Number:
+                    case TokenType.Variable:
+                        output.Add(token);
+                        break;
+                    case TokenType.Function:
+                        stack.Push(token);
+                        break;
+                    case TokenType.Operator:
+                        while (stack.Count > 0 && stack.Peek().Type == TokenType.Operator)
+                        {
+                            string op1 = token.Value;
+                            string op2 = stack.Peek().Value;
+                            int p1 = opPrecedence.ContainsKey(op1) ? opPrecedence[op1] : 0;
+                            int p2 = opPrecedence.ContainsKey(op2) ? opPrecedence[op2] : 0;
+                            bool rightAssoc = opRightAssoc.ContainsKey(op1) && opRightAssoc[op1];
+                            if ((rightAssoc && p1 < p2) || (!rightAssoc && p1 <= p2))
+                                output.Add(stack.Pop());
+                            else
+                                break;
+                        }
+                        stack.Push(token);
+                        break;
+                    case TokenType.LeftParen:
+                        stack.Push(token);
+                        break;
+                    case TokenType.RightParen:
+                        while (stack.Count > 0 && stack.Peek().Type != TokenType.LeftParen)
+                            output.Add(stack.Pop());
+                        if (stack.Count == 0) throw new Exception("Mismatched parentheses");
+                        stack.Pop(); // Pop the left parenthesis.
+                        if (stack.Count > 0 && stack.Peek().Type == TokenType.Function)
+                            output.Add(stack.Pop());
+                        break;
+                    case TokenType.Comma:
+                        while (stack.Count > 0 && stack.Peek().Type != TokenType.LeftParen)
+                            output.Add(stack.Pop());
+                        if (stack.Count == 0) throw new Exception("Mismatched parentheses or misplaced comma");
+                        break;
+                }
+            }
+            while (stack.Count > 0)
+            {
+                if (stack.Peek().Type == TokenType.LeftParen || stack.Peek().Type == TokenType.RightParen)
+                    throw new Exception("Mismatched parentheses");
+                output.Add(stack.Pop());
+            }
+            return output;
+        }
+
+        // Evaluate the RPN expression.
+        public double Evaluate(double x, double y, double z)
+        {
+            var tokens = Tokenize();
+            var rpn = ToRPN(tokens);
+            Stack<double> evalStack = new Stack<double>();
+            foreach (var token in rpn)
+            {
+                if (token.Type == TokenType.Number)
+                {
+                    evalStack.Push(token.Number);
+                }
+                else if (token.Type == TokenType.Variable)
+                {
+                    double val = 0;
+                    switch (token.Value)
+                    {
+                        case "x": val = x; break;
+                        case "y": val = y; break;
+                        case "z": val = z; break;
+                        case "pi": val = Math.PI; break;
+                        default: throw new Exception("Unknown variable: " + token.Value);
+                    }
+                    evalStack.Push(val);
+                }
+                else if (token.Type == TokenType.Operator)
+                {
+                    if (evalStack.Count < 2) throw new Exception("Insufficient operands for operator " + token.Value);
+                    double b = evalStack.Pop();
+                    double a = evalStack.Pop();
+                    double res = 0;
+                    switch (token.Value)
+                    {
+                        case "+": res = a + b; break;
+                        case "-": res = a - b; break;
+                        case "*": res = a * b; break;
+                        case "/": res = a / b; break;
+                        case "%": res = a % b; break;
+                        case "^": res = Math.Pow(a, b); break;
+                        case "<": res = a < b ? 1 : 0; break;
+                        case "<=": res = a <= b ? 1 : 0; break;
+                        case ">": res = a > b ? 1 : 0; break;
+                        case ">=": res = a >= b ? 1 : 0; break;
+                        case "==": res = Math.Abs(a - b) < 1e-9 ? 1 : 0; break;
+                        case "!=": res = Math.Abs(a - b) > 1e-9 ? 1 : 0; break;
+                        default: throw new Exception("Unknown operator: " + token.Value);
+                    }
+                    evalStack.Push(res);
+                }
+                else if (token.Type == TokenType.Function)
+                {
+                    if (functions1.ContainsKey(token.Value))
+                    {
+                        if (evalStack.Count < 1) throw new Exception("Insufficient arguments for function " + token.Value);
+                        double arg = evalStack.Pop();
+                        double res = functions1[token.Value](arg);
+                        evalStack.Push(res);
+                    }
+                    else if (functions2.ContainsKey(token.Value))
+                    {
+                        if (evalStack.Count < 2) throw new Exception("Insufficient arguments for function " + token.Value);
+                        double arg2 = evalStack.Pop();
+                        double arg1 = evalStack.Pop();
+                        double res = functions2[token.Value](arg1, arg2);
+                        evalStack.Push(res);
+                    }
+                    else
+                    {
+                        throw new Exception("Unknown function: " + token.Value);
+                    }
+                }
+            }
+            if (evalStack.Count != 1)
+                throw new Exception("Invalid expression evaluation");
+            return evalStack.Pop();
+        }
+
+        // Public Parse method (alias for Evaluate).
+        public double Parse(double x, double y, double z)
+        {
+            return Evaluate(x, y, z);
+        }
+    }
+    #endregion
+
+    /// <summary>
+    /// 
     /// 'Undo'
     /// 'Redo'
     /// 'Clear'
@@ -770,11 +1090,11 @@ public class WorldEdit
 
     public static Vector3 GetAscendingVector(Vector3 pos)
     {
-        for (int y = (int)pos.Y; y < WorldHeights.Item1; y++)                         // Start at current Y, go up.
+        for (int y = (int)pos.Y; y < WorldHeights.Item2; y++)                         // Start at current Y, go up.
         {
             if (GetBlockFromLocation(new Vector3(pos.X, y, pos.Z)) != AirID)          // Stop at non air block.
             {
-                for (int y2 = y + 1; y2 < WorldHeights.Item1; y2++)                   // Continue up to find a valid block to stand on.
+                for (int y2 = y + 1; y2 < WorldHeights.Item2; y2++)                   // Continue up to find a valid block to stand on.
                 {
                     if (GetBlockFromLocation(new Vector3(pos.X, y2, pos.Z)) == AirID) // Stop at air.
                     {
@@ -791,15 +1111,15 @@ public class WorldEdit
 
     public static Vector3 GetDescendingVector(Vector3 pos)
     {
-        for (int y = (int)pos.Y; y > WorldHeights.Item2; y--)                                 // Start at current Y, go down.
+        for (int y = (int)pos.Y; y > WorldHeights.Item1; y--)                                 // Start at current Y, go down.
         {
             if (GetBlockFromLocation(new Vector3(pos.X, y, pos.Z)) != AirID)                  // Stop at none air block.
             {
-                for (int y2 = y - 1; y2 > WorldHeights.Item2; y2--)                           // Continue down to find air.
+                for (int y2 = y - 1; y2 > WorldHeights.Item1; y2--)                           // Continue down to find air.
                 {
                     if (GetBlockFromLocation(new Vector3(pos.X, y2, pos.Z)) == AirID)         // Stop at air.
                     {
-                        for (int y3 = y2 - 1; y3 > WorldHeights.Item2; y3--)                  // Continue down to find a valid block to stand on.
+                        for (int y3 = y2 - 1; y3 > WorldHeights.Item1; y3--)                  // Continue down to find a valid block to stand on.
                         {
                             if (GetBlockFromLocation(new Vector3(pos.X, y3, pos.Z)) != AirID) // Stop at non air block.
                             {
@@ -818,7 +1138,7 @@ public class WorldEdit
 
     public static Vector3 GetCeilingVector(Vector3 pos)
     {
-        for (int y = WorldHeights.Item1; y > WorldHeights.Item2 - 1; y--)    // Start at max Y, go down.
+        for (int y = WorldHeights.Item2; y > WorldHeights.Item1 - 1; y--)    // Start at max Y, go down.
         {
             if (GetBlockFromLocation(new Vector3(pos.X, y, pos.Z)) != AirID) // Stop at non air block.
             {
@@ -900,7 +1220,7 @@ public class WorldEdit
         for (int y = (int)region.Position1.Y; y <= (int)region.Position2.Y; ++y)
         {
             // Ensure Y is within the world's height constraints.
-            if (y > WorldHeights.Item1 || y < WorldHeights.Item2)
+            if (y > WorldHeights.Item2 || y < WorldHeights.Item1)
                 continue;
 
             for (int x = (int)region.Position1.X; x <= (int)region.Position2.X; ++x)
@@ -961,7 +1281,7 @@ public class WorldEdit
             Vector3 roundedPoint = new Vector3((int)point.X, (int)point.Y, (int)point.Z);
 
             // Ensure Y is within the world's height constraints.
-            if (roundedPoint.Y > WorldHeights.Item1 || roundedPoint.Y < WorldHeights.Item2)
+            if (roundedPoint.Y > WorldHeights.Item2 || roundedPoint.Y < WorldHeights.Item1)
                 continue;
 
             lineBlocks.Add(new Vector3(roundedPoint.X, roundedPoint.Y, roundedPoint.Z));
@@ -989,7 +1309,7 @@ public class WorldEdit
                 {
                     // Ensure Y is within the world's height constraints.
                     int worldY = (int)block.Y + yOffset; // Calculate actual world Y position.
-                    if (worldY > WorldHeights.Item1 || worldY < WorldHeights.Item2)
+                    if (worldY > WorldHeights.Item2 || worldY < WorldHeights.Item1)
                         continue;
 
                     for (int zOffset = -thickness; zOffset <= thickness; zOffset++)
@@ -1030,7 +1350,7 @@ public class WorldEdit
             for (int y = minY; y <= maxY; y++)
             {
                 // Ensure Y is within the world's height constraints.
-                if (y > WorldHeights.Item1 || y < WorldHeights.Item2)
+                if (y > WorldHeights.Item2 || y < WorldHeights.Item1)
                     continue;
 
                 for (int z = minZ; z <= maxZ; z++)
@@ -1155,7 +1475,7 @@ public class WorldEdit
                         Vector3 regionOffset = new Vector3(x, y, z) + GetStackedRegionOffset(region, facingDirection, stackOffset, i);
 
                         // Ensure Y is within the world's height constraints.
-                        if (regionOffset.Y > WorldHeights.Item1 || regionOffset.Y < WorldHeights.Item2)
+                        if (regionOffset.Y > WorldHeights.Item2 || regionOffset.Y < WorldHeights.Item1)
                             continue;
 
                         // Save new location to stack region hashset.
@@ -2043,7 +2363,7 @@ public class WorldEdit
                 Vector3 neighbor = current + dir;
 
                 // Enforce Y constraints (only flood-fill within Y: max height to min height).
-                if (neighbor.Y > WorldHeights.Item1 || neighbor.Y < WorldHeights.Item2) continue;
+                if (neighbor.Y > WorldHeights.Item2 || neighbor.Y < WorldHeights.Item1) continue;
 
                 // Ensure block matches the block ID and hasn't been visited
                 if (GetBlockFromLocation(neighbor) == blockID && !filledPositions.Contains(neighbor))
@@ -2191,7 +2511,7 @@ public class WorldEdit
     private static int GetTerrainHeight(int x, int z)
     {
         // Loop through each Y-level from 62 to -62, checking for non-empty blocks (e.g., terrain).
-        for (int y = WorldHeights.Item1; y > (WorldHeights.Item2 - 1); y--)
+        for (int y = WorldHeights.Item2; y > (WorldHeights.Item1 - 1); y--)
         {
             // Create a vector for the world coordinates at each y-level.
             Vector3 currentPosition = new Vector3(x, y, z);
@@ -2203,7 +2523,7 @@ public class WorldEdit
                 return (y + 1);
             }
         }
-        return WorldHeights.Item2; // Return the lowest world level.
+        return WorldHeights.Item1; // Return the lowest world level.
     }
     #endregion
 
@@ -2221,7 +2541,7 @@ public class WorldEdit
                 if ((x - (int)center.X) * (x - (int)center.X) + (z - (int)center.Z) * (z - (int)center.Z) <= radius * radius)
                 {
                     // Loop through each Y-level from 62 to -62, checking for non-empty blocks (e.g., terrain).
-                    for (int y = WorldHeights.Item1; y > WorldHeights.Item2 - 1; y--)
+                    for (int y = WorldHeights.Item2; y > WorldHeights.Item1 - 1; y--)
                     {
                         // Check if the block is not empty.
                         if (GetBlockFromLocation(new Vector3(x, y, z)) != AirID)
@@ -2277,10 +2597,10 @@ public class WorldEdit
         try
         {
             // Start by assuming a height below the surface.
-            float treeBaseHeight = WorldHeights.Item2;
+            float treeBaseHeight = WorldHeights.Item1;
 
             // Loop through each Y-level from 62 to -62, checking for non-empty blocks (e.g., terrain).
-            for (int y = WorldHeights.Item1; y > (WorldHeights.Item2 - 1); y--)
+            for (int y = WorldHeights.Item2; y > (WorldHeights.Item1 - 1); y--)
             {
                 // Create a vector for the world coordinates at each y-level.
                 Vector3 currentPosition = new Vector3(worldX, y, worldZ);
@@ -2307,7 +2627,7 @@ public class WorldEdit
                 // Build the trunk of the tree by placing log blocks.
                 for (int i = 0; i < treeHeight; i++)
                 {
-                    if ((int)treeBaseHeight + trunkHeight <= WorldHeights.Item1)
+                    if ((int)treeBaseHeight + trunkHeight <= WorldHeights.Item2)
                     {
                         Vector3 trunkPosition = new Vector3(worldX, (int)treeBaseHeight + trunkHeight, worldZ);
 
@@ -2328,7 +2648,7 @@ public class WorldEdit
                             Vector3 foliagePosition = new Vector3(worldX + xOffset, (int)treeBaseHeight + yOffset + trunkHeight, worldZ + zOffset);
 
                             // Ensure the foliage is within the map height limit.
-                            if ((float)foliagePosition.Y <= WorldHeights.Item1)
+                            if ((float)foliagePosition.Y <= WorldHeights.Item2)
                             {
                                 // Check if the block is empty or unassigned
                                 int blockType = GetBlockFromLocation(foliagePosition);
@@ -2373,6 +2693,7 @@ public class WorldEdit
     /// 'Cylinder'
     /// 'Diamond'
     /// 'Ring'
+    /// 'Generate'
     /// 
     /// </summary>
     #region Generation Methods
@@ -2418,7 +2739,7 @@ public class WorldEdit
             {
                 // Ensure Y is within the world's height constraints.
                 int worldY = (int)pos.Y + y; // Calculate actual world Y position.
-                if (worldY > WorldHeights.Item1 || worldY < WorldHeights.Item2)
+                if (worldY > WorldHeights.Item2 || worldY < WorldHeights.Item1)
                     continue;
 
                 for (int z = -halfradii; z < radii - halfradii; ++z)
@@ -2489,7 +2810,7 @@ public class WorldEdit
                             if (!isEdge)
                                 continue;
                         }
-                        if (y > WorldHeights.Item1 || y < WorldHeights.Item2)
+                        if (y > WorldHeights.Item2 || y < WorldHeights.Item1)
                             continue;
                         Vector3 newPos = new Vector3(x, y, z);
                         if (ignoreBlock == -1 || GetBlockFromLocation(newPos) != ignoreBlock)
@@ -2523,7 +2844,7 @@ public class WorldEdit
                             if (!isEdge)
                                 continue;
                         }
-                        if (y > WorldHeights.Item1 || y < WorldHeights.Item2)
+                        if (y > WorldHeights.Item2 || y < WorldHeights.Item1)
                             continue;
                         Vector3 newPos = new Vector3(x, y, z);
                         if (ignoreBlock == -1 || GetBlockFromLocation(newPos) != ignoreBlock)
@@ -2950,6 +3271,127 @@ public class WorldEdit
         }
 
         return ringBlocks;
+    }
+    #endregion
+
+    #region Generate
+
+    public static HashSet<Tuple<Vector3, int>> MakeShape(Region region, string expression, bool hollow, int ignoreBlock = -1)
+    {
+        // This dictionary holds positions and data values for blocks that satisfy the condition.
+        Dictionary<Vector3, int> fullShape = new Dictionary<Vector3, int>();
+
+        // Split the expression if a semicolon is present.
+        // The left part (optionally starting with "data=") is the data expression,
+        // and the right part is the condition expression.
+        string dataExpression = null;
+        string conditionExpression = expression;
+
+        if (expression.Contains(";"))
+        {
+            string[] parts = expression.Split(new char[] { ';' }, 2);
+            dataExpression = parts[0].Trim();
+            conditionExpression = parts[1].Trim();
+
+            if (dataExpression.StartsWith("data=", StringComparison.OrdinalIgnoreCase))
+            {
+                dataExpression = dataExpression.Substring("data=".Length).Trim();
+            }
+        }
+
+        // Create evaluators for the condition and (optionally) the data expression.
+        ExpressionEvaluator condEvaluator = new ExpressionEvaluator(conditionExpression);
+        ExpressionEvaluator dataEvaluator = dataExpression != null ? new ExpressionEvaluator(dataExpression) : null;
+
+        // Use the region's bounding box.
+        int minX = (int)region.Position1.X;
+        int maxX = (int)region.Position2.X;
+        int minY = (int)region.Position1.Y;
+        int maxY = (int)region.Position2.Y;
+        int minZ = (int)region.Position1.Z;
+        int maxZ = (int)region.Position2.Z;
+
+        // Compute the region center for relative coordinate evaluation.
+        Vector3 center = region.Center;
+
+        // First pass: evaluate all points in the region.
+        for (int x = minX; x <= maxX; x++)
+        {
+            for (int y = minY; y <= maxY; y++)
+            {
+                // Ensure y is within world bounds.
+                if (y > WorldHeights.Item2 || y < WorldHeights.Item1)
+                    continue;
+
+                for (int z = minZ; z <= maxZ; z++)
+                {
+                    // Convert absolute coordinates to relative ones (centered around 0,0,0).
+                    int relX = x - (int)center.X;
+                    int relY = y - (int)center.Y;
+                    int relZ = z - (int)center.Z;
+
+                    double result = condEvaluator.Parse(relX, relY, relZ);
+                    bool placeBlock = result > 0;
+
+                    if (placeBlock)
+                    {
+                        int dataValue = -1;
+                        if (dataEvaluator != null)
+                        {
+                            dataValue = (int)dataEvaluator.Parse(relX, relY, relZ);
+                        }
+
+                        Vector3 pos = new Vector3(x, y, z);
+                        if (ignoreBlock == -1 || GetBlockFromLocation(pos) != ignoreBlock)
+                        {
+                            fullShape[pos] = dataValue;
+                        }
+                    }
+                }
+            }
+        }
+
+        // If not hollow, return the full shape.
+        if (!hollow)
+        {
+            // Convert dictionary to hash set of tuples.
+            return new HashSet<Tuple<Vector3, int>>(fullShape.Select(kvp => new Tuple<Vector3, int>(kvp.Key, kvp.Value)));
+        }
+
+        // For hollow shapes, keep only blocks that have at least one neighbor missing.
+        // Define neighbor offsets (6-adjacency; you can extend to 26-adjacency if needed).
+        Vector3[] offsets = new Vector3[]
+        {
+        new Vector3(1,0,0),
+        new Vector3(-1,0,0),
+        new Vector3(0,1,0),
+        new Vector3(0,-1,0),
+        new Vector3(0,0,1),
+        new Vector3(0,0,-1)
+        };
+
+        HashSet<Tuple<Vector3, int>> hollowShape = new HashSet<Tuple<Vector3, int>>();
+
+        foreach (var kvp in fullShape)
+        {
+            Vector3 pos = kvp.Key;
+            bool isBoundary = false;
+            foreach (var offset in offsets)
+            {
+                Vector3 neighbor = pos + offset;
+                if (!fullShape.ContainsKey(neighbor))
+                {
+                    isBoundary = true;
+                    break;
+                }
+            }
+            if (isBoundary)
+            {
+                hollowShape.Add(new Tuple<Vector3, int>(pos, kvp.Value));
+            }
+        }
+
+        return hollowShape;
     }
     #endregion
 

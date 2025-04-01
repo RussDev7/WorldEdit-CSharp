@@ -214,6 +214,7 @@ namespace DNA.CastleMinerZ.UI
             ("diamond [r block(,array)] [radii] (hollow) (squared)",               "Makes a filled diamond."),
             ("ring [block(,array)] [radius] (hollow)",                             "Makes a filled ring."),
             ("ringarray [block(,array)] [amount] [space]",                         "Makes a hollowed ring at evenly spaced intervals."),
+            ("generate [block(,array)] [expression(clipboard)] (hollow)",          "Generates a shape according to a formula."),
 
             // Schematic and Clipboard Commands.
             ("schematic [save] (saveAir)",                                         "Save your clipboard into a schematic file."),
@@ -809,17 +810,17 @@ namespace DNA.CastleMinerZ.UI
                 upwardsLocation.Y += amount;
 
                 // Ensure the position is within the bounds of the world.
-                if (upwardsLocation.Y <= WorldHeights.Item1)
+                if (upwardsLocation.Y <= WorldHeights.Item2)
                 {
-                    PlaceBlock(upwardsLocation, 48);                                                 // GlassMystery.
-                    await Task.Delay(100);                                                           // Add short wait.
-                    upwardsLocation.Y += 1;                                                          // Place user on top. (adjust for your user offset)
+                    PlaceBlock(upwardsLocation, 48);      // GlassMystery.
+                    await Task.Delay(100);                // Add short wait.
+                    upwardsLocation.Y += 1;               // Place user on top. (adjust for your user offset)
                     TeleportUser(upwardsLocation, false); // Teleport user.
 
                     Console.WriteLine($"Teleported up '{amount}' blocks!");
                 }
                 else
-                    Console.WriteLine($"Location 'Y:{Math.Round(upwardsLocation.Y)}' is out of bounds. Max: '{WorldHeights.Item1}'.");
+                    Console.WriteLine($"Location 'Y:{Math.Round(upwardsLocation.Y)}' is out of bounds. Max: '{WorldHeights.Item2}'.");
             }
             catch (Exception ex)
             {
@@ -848,17 +849,17 @@ namespace DNA.CastleMinerZ.UI
                 upwardsLocation.Y -= amount;
 
                 // Ensure the position is within the bounds of the world.
-                if (upwardsLocation.Y >= WorldHeights.Item2)
+                if (upwardsLocation.Y >= WorldHeights.Item1)
                 {
-                    PlaceBlock(upwardsLocation, 48);                                                 // GlassMystery.
-                    await Task.Delay(100);                                                           // Add short wait.
-                    upwardsLocation.Y += 1;                                                          // Place user on top. (adjust for your user offset)
+                    PlaceBlock(upwardsLocation, 48);      // GlassMystery.
+                    await Task.Delay(100);                // Add short wait.
+                    upwardsLocation.Y += 1;               // Place user on top. (adjust for your user offset)
                     TeleportUser(upwardsLocation, false); // Teleport user.
 
                     Console.WriteLine($"Teleported down '{amount}' blocks!");
                 }
                 else
-                    Console.WriteLine($"Location 'Y:{Math.Round(upwardsLocation.Y)}' is out of bounds. Max: '{WorldHeights.Item2}'.");
+                    Console.WriteLine($"Location 'Y:{Math.Round(upwardsLocation.Y)}' is out of bounds. Max: '{WorldHeights.Item1}'.");
             }
             catch (Exception ex)
             {
@@ -1321,14 +1322,14 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Get the further distance from the world boundaries.
-                int furthestDistance = (int)Math.Max(Math.Abs(_pointToLocation1.Y - WorldHeights.Item1), Math.Abs(_pointToLocation1.Y - WorldHeights.Item2));
+                int furthestDistance = (int)Math.Max(Math.Abs(_pointToLocation1.Y - WorldHeights.Item2), Math.Abs(_pointToLocation1.Y - WorldHeights.Item1));
 
                 // Get the center point.
                 Vector3 centerOffset = new Vector3(_pointToLocation1.X, _pointToLocation1.Y - (furthestDistance / 2), _pointToLocation1.Z);
 
                 // MakeCylinder(Vector3 pos, double radiusX, double radiusZ, int height, bool hollow, int ignoreBlock = -1).
                 // Check if the from-block pattern contains air, and if so, have the region save it.
-                var region = (searchPattern == "all" || searchPatternNumbers.Contains(AirID)) ? MakeCylinder(centerOffset, radii, radii, furthestDistance, false) : MakeCylinder(centerOffset, radii, radii, WorldHeights.Item1 * 2, false, AirID);
+                var region = (searchPattern == "all" || searchPatternNumbers.Contains(AirID)) ? MakeCylinder(centerOffset, radii, radii, furthestDistance, false) : MakeCylinder(centerOffset, radii, radii, WorldHeights.Item2 * 2, false, AirID);
 
                 // Save the existing region and clear the upcoming redo.
                 if (searchPattern == "all")
@@ -2670,6 +2671,106 @@ namespace DNA.CastleMinerZ.UI
                 // Save the actions to undo stack.
                 SaveUndo(redoBuilder);
 
+                Console.WriteLine($"{region.Count} blocks have been replaced!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region /generate
+
+        [Command("/generate")]
+        [Command("/gen")]
+        [Command("/g")]
+        private static void ExecuteGenerate(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.WriteLine("ERROR: Command usage /generate [block(,array)] [expression] (hollow)");
+                return;
+            }
+
+            try
+            {
+                string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
+
+                // Determine if the last argument is the hollow flag.
+                bool hollowSpecified = args.Length > 1 &&
+                    (args[args.Length - 1].Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                     args[args.Length - 1].Equals("false", StringComparison.OrdinalIgnoreCase));
+
+                bool hollow = false;
+                string expression;
+
+                if (hollowSpecified)
+                {
+                    // Last token is the hollow flag.
+                    hollow = bool.Parse(args[args.Length - 1]);
+                    // Join all tokens from index 1 to the second-to-last token.
+                    expression = string.Join(" ", args, 1, args.Length - 2);
+                }
+                else
+                {
+                    // Join all tokens from index 1 onward as the expression.
+                    expression = string.Join(" ", args, 1, args.Length - 1);
+                }
+
+                // If the user has specified "clipboard" as the expression, fetch the clipboard text.
+                if (string.Equals(expression.Trim(), "clipboard", StringComparison.OrdinalIgnoreCase))
+                {
+                    expression = Clipboard.GetText();
+                }
+
+                // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
+                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
+
+                // Make sure the input is within the min/max.
+                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                {
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    return;
+                }
+
+                // Define location data.
+                Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
+
+                // MakeShape(Vector3 pos, string expression, bool hollow, int ignoreBlock = -1).
+                var region = MakeShape(definedRegion, expression, hollow);
+
+                // Save the existing region and clear the upcoming redo.
+                // Extract and save only the vector locations for the initial save.
+                SaveUndo(ExtractVector3HashSet(region));
+                ClearRedo();
+
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                foreach (var i in region)
+                {
+                    // Get location of block and block ID.
+                    Vector3 blockLocation = i.Item1;
+                    int block = i.Item2;
+
+                    // Check if output is -1, use random block from input.
+                    if (block == -1)
+                        block = GetRandomBlockFromPattern(blockPattern);
+                    else
+                        if (block < BlockIDValues.Item1 || block > BlockIDValues.Item2) // Ensure the returning value is valid.
+                            block = GetRandomBlockFromPattern(blockPattern);
+
+                    // Place block if it doesn't already exist. (improves the performance)
+                    if (GetBlockFromLocation(blockLocation) != block)
+                    {
+                        PlaceBlock(blockLocation, block);
+                        // Add block to redo.
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
+                    }
+                }
+
+                // Save the actions to undo stack.
+                SaveUndo(redoBuilder);
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
