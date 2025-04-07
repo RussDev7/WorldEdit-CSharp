@@ -5,8 +5,9 @@
     <b>A Map Editor... that runs in-game!</b> With selections, schematics, copy and paste, brushes, and scripting. This is a lightweight, blazing fast, csharp-based interpretation of the classic <a href="https://modrinth.com/plugin/worldedit">World Edit</a> for Minecraft.
 </div>
 
-![WE Shapes Info Pt1](https://github.com/user-attachments/assets/83173f49-f516-4284-a2ac-ce0db0a74313)
-![WE Shapes Info Pt2](https://github.com/user-attachments/assets/446176e3-67a7-4b28-99c9-5a2ce0565f40)
+![WE Shapes Info Pt1_v2](https://github.com/user-attachments/assets/8ce6a795-7ca0-4a06-94e8-4936a0cf9b3a)
+![WE Shapes Info Pt2_v2](https://github.com/user-attachments/assets/d636c5f3-5fe9-4763-b292-5b9fa1e86958)
+![WE Shapes Info Pt3_v2](https://github.com/user-attachments/assets/35926fca-0250-4c2e-b6d9-fb5cceba1d81)
 
 # Frequently Asked Questions:
 
