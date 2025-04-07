@@ -193,7 +193,7 @@ namespace DNA.CastleMinerZ.UI
             ("massreplace [radii] [source block,(all)] [to block,(all)]",          "Replace all blocks within a circular radii with another."),
             ("walls [block(,array)]",                                              "Build the four sides of the selection."),
             ("smooth (iterations)",                                                "Smooth the elevation in the selection."),
-            ("stack (amount)",                                                     "Repeat the contents of the selection."),
+            ("stack (amount) (useAir)",                                            "Repeat the contents of the selection."),
             ("spell [words(@linebreak)/(/paste)] [block(,array)] (flip) (rotate)", "Draws a text made of blocks relative to position 1."),
             ("hollow (block(,array)) (thickness)",                                 "Hollows out the object contained in this selection."),
             ("fill [block(,array)]",                                               "Fills only the inner-most blocks of an object contained in this selection."),
@@ -1172,10 +1172,10 @@ namespace DNA.CastleMinerZ.UI
                     int currentBlock = GetBlockFromLocation(i);
 
                     // Check if the current block is a block to replace.
-                    if ((searchPattern == "all" && currentBlock != 0) || currentBlock.ToString() == searchPattern) // Make sure not to replace 'air' when using 'all' mode.
+                    if ((searchPattern == "all" && currentBlock != AirID) || currentBlock.ToString() == searchPattern) // Make sure not to replace 'air' when using 'all' mode.
                     {
                         // Get random block from input.
-                        HashSet<int> excludedBlocks = new HashSet<int> { 0, 26 }; // IDs to exclude. Block ID 26 'Torch' crashes.
+                        HashSet<int> excludedBlocks = new HashSet<int> { AirID, 26 }; // IDs to exclude. Block ID 26 'Torch' crashes.
                         int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePattern);
 
                         // Place block if it doesn't already exist. (improves the performance) 
@@ -1257,7 +1257,7 @@ namespace DNA.CastleMinerZ.UI
                     var excludedBlocks = exceptPattern.Split(',').Select(int.Parse).ToList();
 
                     // Check if the current block is not excluded, and its not air, place new block.
-                    if ((!excludedBlocks.Contains(currentBlock)) && currentBlock != 0)
+                    if ((!excludedBlocks.Contains(currentBlock)) && currentBlock != AirID)
                     {
                         // Get random block from input.
                         int replaceBlock = GetRandomBlockFromPattern(replacePattern);
@@ -1345,10 +1345,10 @@ namespace DNA.CastleMinerZ.UI
                     int currentBlock = GetBlockFromLocation(i);
 
                     // Check if the current block is a block to replace.
-                    if ((searchPattern == "all" && currentBlock != 0) || currentBlock.ToString() == searchPattern) // Make sure not to replace 'air' when using 'all' mode.
+                    if ((searchPattern == "all" && currentBlock != AirID) || currentBlock.ToString() == searchPattern) // Make sure not to replace 'air' when using 'all' mode.
                     {
                         // Get random block from input.
-                        HashSet<int> excludedBlocks = new HashSet<int> { 0, 26 }; // IDs to exclude. Block ID 26 'Torch' crashes.
+                        HashSet<int> excludedBlocks = new HashSet<int> { AirID, 26 }; // IDs to exclude. Block ID 26 'Torch' crashes.
                         int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePattern);
 
                         // Place block if it doesn't already exist. (improves the performance) 
@@ -1494,7 +1494,9 @@ namespace DNA.CastleMinerZ.UI
         {
             try
             {
+                bool useAir = true; // Enabled by default.
                 int stackCount = args.Length > 0 && int.TryParse(args[0], out int s) ? s : 1;
+                if (args.Length > 1 && args[1].Equals("false", StringComparison.OrdinalIgnoreCase)) useAir = false;
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -1505,8 +1507,8 @@ namespace DNA.CastleMinerZ.UI
                 // Get the direction to stack too using the regions start position and desired direction.
                 Direction stackDirection = GetFacingDirection(definedRegion.Position1, cursorLocation);
 
-                // StackRegion(Region region, Direction facingDirection, int stackCount).
-                var region = StackRegion(definedRegion, stackDirection, stackCount);
+                // StackRegion(Region region, Direction facingDirection, int stackCount, bool useAir = true).
+                var region = StackRegion(definedRegion, stackDirection, stackCount, useAir);
 
                 // Save the existing region and clear the upcoming redo.
                 // Extract and save only the vector locations for the initial save.
@@ -1519,11 +1521,14 @@ namespace DNA.CastleMinerZ.UI
                     // Get location of block.
                     Vector3 blockLocation = i.Item1;
 
-                    // Get random block from input.
+                    // Get block from location.
+                    int blockAtLocation = GetBlockFromLocation(blockLocation);
+
+                    // Get block from input.
                     int block = i.Item2;
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(blockLocation) != block)
+                    if (blockAtLocation != block)
                     {
                         PlaceBlock(blockLocation, block);
 
@@ -2689,7 +2694,7 @@ namespace DNA.CastleMinerZ.UI
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("ERROR: Command usage /generate [block(,array)] [expression] (hollow)");
+                Console.WriteLine("ERROR: Command usage /generate [block(,array)] [expression(clipboard)] (hollow)");
                 return;
             }
 

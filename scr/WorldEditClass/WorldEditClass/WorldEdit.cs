@@ -1454,7 +1454,7 @@ public class WorldEdit
 
     #region Stack
 
-    public static HashSet<Tuple<Vector3, int>> StackRegion(Region region, Direction facingDirection, int stackCount)
+    public static HashSet<Tuple<Vector3, int>> StackRegion(Region region, Direction facingDirection, int stackCount, bool useAir = true)
     {
         HashSet<Tuple<Vector3, int>> stackBlocks = new HashSet<Tuple<Vector3, int>>();
 
@@ -1471,6 +1471,12 @@ public class WorldEdit
                 {
                     for (int z = (int)region.Position1.Z; z <= (int)region.Position2.Z; ++z)
                     {
+                        // Get block from location.
+                        int block = GetBlockFromLocation(new Vector3(x, y, z));
+
+                        // Check if useAir is disabled and if so, skip gathering air blocks.
+                        if (!useAir && block == AirID) continue;
+
                         // Calculate the offset per direction and update original position with calculated position.
                         Vector3 regionOffset = new Vector3(x, y, z) + GetStackedRegionOffset(region, facingDirection, stackOffset, i);
 
@@ -1479,7 +1485,7 @@ public class WorldEdit
                             continue;
 
                         // Save new location to stack region hashset.
-                        stackBlocks.Add(new Tuple<Vector3, int>(regionOffset, GetBlockFromLocation(new Vector3(x, y, z))));
+                        stackBlocks.Add(new Tuple<Vector3, int>(regionOffset, block));
 
                         // Console.WriteLine("Stacked Region " + i + " - Original: " + new Vector3(x, y, z) + ", Offset: " + regionOffset);
                     }
