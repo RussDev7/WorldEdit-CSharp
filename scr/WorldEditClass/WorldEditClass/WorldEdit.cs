@@ -207,8 +207,27 @@ public class WorldEdit
             }
         }
 
+        // Returns a unit offset based on the provided direction.
+        public static Vector3 GetDirectionalUnitOffset(Direction direction)
+        {
+            if (direction == Direction.Up)
+                return new Vector3(0, 1, 0);
+            else if (direction == Direction.Down)
+                return new Vector3(0, -1, 0);
+            else if (direction == Direction.posX)
+                return new Vector3(1, 0, 0);
+            else if (direction == Direction.negX)
+                return new Vector3(-1, 0, 0);
+            else if (direction == Direction.posZ)
+                return new Vector3(0, 0, 1);
+            else if (direction == Direction.negZ)
+                return new Vector3(0, 0, -1);
+            else
+                return Vector3.Zero;
+        }
+
         // Returns a normalized unit vector corresponding to the given direction.
-        static Vector3 GetNormalizedDirectionVector(Direction dir)
+        public static Vector3 GetNormalizedDirectionVector(Direction dir)
         {
             Vector3 vector = Vector3.Zero;
             switch (dir)
@@ -1501,6 +1520,43 @@ public class WorldEdit
             smoothedRegion.Add(new Tuple<Vector3, int>(new Vector3(x, smoothedY, z), blockID));
         }
         return smoothedRegion;
+    }
+    #endregion
+
+    #region Move
+
+    public static HashSet<Tuple<Vector3, int>> MoveRegion(Region region, Vector3 moveOffset)
+    {
+        HashSet<Tuple<Vector3, int>> regionBlocks = new HashSet<Tuple<Vector3, int>>();
+
+        for (int y = (int)region.Position1.Y; y <= (int)region.Position2.Y; ++y)
+        {
+            for (int x = (int)region.Position1.X; x <= (int)region.Position2.X; ++x)
+            {
+                for (int z = (int)region.Position1.Z; z <= (int)region.Position2.Z; ++z)
+                {
+                    // The original position and block at this coordinate.
+                    Vector3 originalPos = new Vector3(x, y, z);
+                    int block = GetBlockFromLocation(originalPos);
+
+                    // Calculate the block's new position.
+                    Vector3 newPos = originalPos + moveOffset;
+
+                    // Ensure the new position's Y coordinate is within world height boundaries.
+                    if (newPos.Y > WorldHeights.Item2 || newPos.Y < WorldHeights.Item1)
+                        continue;
+
+                    // Save existing block from location.
+                    if (block != AirID)
+                        regionBlocks.Add(new Tuple<Vector3, int>(originalPos, AirID));
+
+                    // Save moved block from location.
+                    regionBlocks.Add(new Tuple<Vector3, int>(newPos, block));
+                }
+            }
+        }
+
+        return regionBlocks;
     }
     #endregion
 

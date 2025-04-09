@@ -193,6 +193,7 @@ namespace DNA.CastleMinerZ.UI
             ("massreplace [radii] [source block,(all)] [to block,(all)]",          "Replace all blocks within a circular radii with another."),
             ("walls [block(,array)]",                                              "Build the four sides of the selection."),
             ("smooth (iterations)",                                                "Smooth the elevation in the selection."),
+            ("move [amount] (direction)",                                          "Move the contents of the selection."),
             ("stack (amount) (direction) (useAir)",                                "Repeat the contents of the selection."),
             ("stretch (amount) (direction) (useAir)",                              "Stretch the contents of the selection."),
             ("spell [words(@linebreak)/(/paste)] [block(,array)] (flip) (rotate)", "Draws a text made of blocks relative to position 1."),
@@ -1480,6 +1481,93 @@ namespace DNA.CastleMinerZ.UI
                 SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region /move
+
+        [Command("/move")]
+        private static void ExecuteMove(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("ERROR: Command usage /move [amount] (direction)");
+                return;
+            }
+
+            try
+            {
+                int moveAmount = int.TryParse(args[0], out int m) ? m : 1;
+
+                // Check if the move amount is greater then zero.
+                if (moveAmount < 1)
+                {
+                    Console.WriteLine($"ERROR: 'Amount' must be greater then '0'!");
+                    return;
+                }
+
+                // Default settings.
+                Direction moveDirection = Direction.posX;
+
+                // If only amount is provided, derive direction from the user's cursor.
+                if (args.Length == 1)
+                {
+                    Vector3 cursorLocation = GetUsersCursorLocation();
+                    moveDirection = GetFacingDirection(_pointToLocation1, cursorLocation);
+                }
+                // Otherwise, try to parse the given direction.
+                else if (args.Length >= 2)
+                {
+                    if (!Enum.TryParse<Direction>(args[1], true, out moveDirection))
+                    {
+                        // Fallback if parsing fails.
+                        Vector3 cursorLocation = GetUsersCursorLocation();
+                        moveDirection = GetFacingDirection(_pointToLocation1, cursorLocation);
+                    }
+                }
+
+                // Define the region to move using the two global points.
+                Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
+
+                // Calculate the move offset based on the direction and amount.
+                Vector3 moveOffset = GetDirectionalUnitOffset(moveDirection) * moveAmount;
+
+                // MoveRegion(Region region, Vector3 moveOffset).
+                var originalBlocks = MoveRegion(definedRegion, moveOffset);
+                
+                SaveUndo(ExtractVector3HashSet(originalBlocks));
+                ClearRedo();
+
+                // Iterate over each block and perform the move.
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                foreach (var i in originalBlocks)
+                {
+                    // Get location of block.
+                    Vector3 blockLocation = i.Item1;
+
+                    // Get block from location.
+                    int blockAtLocation = GetBlockFromLocation(blockLocation);
+
+                    // Get block from input.
+                    int block = i.Item2;
+
+                    // Place block if it doesn't already exist. (improves the performance)
+                    if (blockAtLocation != block)
+                    {
+                        PlaceBlock(blockLocation, block);
+
+                        // Add block to redo.
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
+                    }
+                }
+
+                SaveUndo(redoBuilder);
+                Console.WriteLine($"{originalBlocks.Count / 2} blocks have been moved!");
             }
             catch (Exception ex)
             {
