@@ -207,6 +207,40 @@ public class WorldEdit
             }
         }
 
+        // Returns a normalized unit vector corresponding to the given direction.
+        static Vector3 GetNormalizedDirectionVector(Direction dir)
+        {
+            Vector3 vector = Vector3.Zero;
+            switch (dir)
+            {
+                case Direction.Up:
+                    vector = new Vector3(0, 1, 0);
+                    break;
+                case Direction.Down:
+                    vector = new Vector3(0, -1, 0);
+                    break;
+                case Direction.posX:
+                    vector = new Vector3(1, 0, 0);
+                    break;
+                case Direction.negX:
+                    vector = new Vector3(-1, 0, 0);
+                    break;
+                case Direction.posZ:
+                    vector = new Vector3(0, 0, 1);
+                    break;
+                case Direction.negZ:
+                    vector = new Vector3(0, 0, -1);
+                    break;
+            }
+            float len = (float)Math.Sqrt(vector.X * vector.X + vector.Y * vector.Y + vector.Z * vector.Z);
+            if (len > 0)
+            {
+                vector.X /= len;
+                vector.Y /= len;
+                vector.Z /= len;
+            }
+            return vector;
+        }
         #endregion
 
         #region Utility Helpers
@@ -298,6 +332,12 @@ public class WorldEdit
             return vector3HashSet;
         }
 
+        // Check if the direction is valid.
+        public static bool IsValidDirection(string direction)
+        {
+            return direction.ToLower() == "posx" || direction.ToLower() == "negx" || direction.ToLower() == "posz" || direction.ToLower() == "negz" || direction.ToLower() == "up" || direction.ToLower() == "down";
+        }
+
         // Check if the rotation angle is valid.
         public static bool IsValidRotation(int rotation)
         {
@@ -307,11 +347,17 @@ public class WorldEdit
         // Check if the shape is valid.
         public static bool IsValidBrushShape(string shape)
         {
-            return shape == "floor" || shape == "cube" || shape == "prism" || shape == "sphere" || shape == "ring" || shape == "pyramid" || shape == "cone" || shape == "cylinder" || shape == "diamond" || shape == "tree" || shape == "snow"|| shape == "schem" || shape == "floodfill";
+            return shape.ToLower() == "floor" || shape.ToLower() == "cube" || shape.ToLower() == "prism" || shape.ToLower() == "sphere" || shape.ToLower() == "ring" || shape.ToLower() == "pyramid" || shape.ToLower() == "cone" || shape.ToLower() == "cylinder" || shape.ToLower() == "diamond" || shape.ToLower() == "tree" || shape.ToLower() == "snow"|| shape.ToLower() == "schem" || shape.ToLower() == "floodfill";
         }
         #endregion
 
         #region Math Helpers
+
+        // Computes the dot product of two vectors.
+        public static float DotProduct(Vector3 a, Vector3 b) => a.X * b.X + a.Y * b.Y + a.Z * b.Z;
+
+        // Returns the Euclidean length (magnitude) of a vector.
+        public static float Vector3Length(Vector3 v) => (float)Math.Sqrt(v.X * v.X + v.Y * v.Y + v.Z * v.Z);
 
         // Method to check if a position is within the region defined by start and end points.
         public static bool IsWithinRegion(Vector3 position, Vector3 start, Vector3 end)
@@ -376,6 +422,11 @@ public class WorldEdit
         public static int Clamp(int value, int min, int max)
         {
             return (value < min) ? min : (value > max) ? max : value;
+        }
+
+        public static Vector3 RoundVector(Vector3 v)
+        {
+            return new Vector3((int)Math.Round(v.X), (int)Math.Round(v.Y), (int)Math.Round(v.Z));
         }
         #endregion
 
@@ -1198,6 +1249,7 @@ public class WorldEdit
     /// 'Walls'
     /// 'Smooth'
     /// 'Stack'
+    /// 'Stretch'
     /// 'Spell Words'
     /// 'Hollow'
     /// 'Fill'
@@ -1532,6 +1584,325 @@ public class WorldEdit
 
         // Return the calculated region offset.
         return regionOffset;
+    }
+    #endregion
+
+    #region Stretch
+
+    public static HashSet<Tuple<Vector3, int>> StretchRegion(Region region, Direction stretchDirection, double stretchFactor, bool useAir = true)
+    {
+        HashSet<Tuple<Vector3, int>> stretchedBlocks = new HashSet<Tuple<Vector3, int>>();
+
+        if (stretchDirection == Direction.posX || stretchDirection == Direction.negX)
+        {
+            double centerX = (region.Position1.X + region.Position2.X) / 2.0;
+            // Group blocks by (Y,Z) – these coordinates remain constant when stretching along X.
+            Dictionary<(int, int), List<(int originalX, int blockType)>> rows = new Dictionary<(int, int), List<(int, int)>>();
+            for (int y = (int)region.Position1.Y; y <= (int)region.Position2.Y; y++)
+            {
+                for (int x = (int)region.Position1.X; x <= (int)region.Position2.X; x++)
+                {
+                    for (int z = (int)region.Position1.Z; z <= (int)region.Position2.Z; z++)
+                    {
+                        Vector3 pos = new Vector3(x, y, z);
+                        int block = GetBlockFromLocation(pos);
+                        var key = (y, z);
+                        if (!rows.ContainsKey(key))
+                            rows[key] = new List<(int, int)>();
+                        rows[key].Add((x, block));
+                    }
+                }
+            }
+
+            // Process each row (constant Y and Z).
+            foreach (var kvp in rows)
+            {
+                var key = kvp.Key; // key = (y, z)
+                var rowBlocks = kvp.Value; // Each tuple: (originalX, blockType)
+                var transformed = rowBlocks
+                    .Select(b => new
+                    {
+                        newCoord = (int)Math.Round(centerX + ((double)b.originalX - centerX) * stretchFactor),
+                        blockType = b.blockType,
+                        original = b.originalX
+                    })
+                    .ToList();
+
+                // Sort in order according to the stretch direction.
+                if (stretchDirection == Direction.negX)
+                    transformed.Sort((a, b) => b.newCoord.CompareTo(a.newCoord));
+                else
+                    transformed.Sort((a, b) => a.newCoord.CompareTo(b.newCoord));
+
+                // Add each transformed block and fill gaps between adjacent blocks.
+                for (int i = 0; i < transformed.Count; i++)
+                {
+                    var current = transformed[i];
+                    Vector3 newLocation = new Vector3(current.newCoord, key.Item1, key.Item2);
+
+                    if (useAir || GetBlockFromLocation(newLocation) != current.blockType || current.blockType != AirID)
+                        stretchedBlocks.Add(new Tuple<Vector3, int>(
+                            newLocation,
+                            current.blockType));
+
+                    if (i < transformed.Count - 1)
+                    {
+                        var next = transformed[i + 1];
+                        int gap = Math.Abs(next.newCoord - current.newCoord);
+                        if (gap > 1)
+                        {
+                            int start = Math.Min(current.newCoord, next.newCoord);
+                            int end = Math.Max(current.newCoord, next.newCoord);
+                            for (int fillX = start + 1; fillX < end; fillX++)
+                            {
+                                Vector3 fillLocation = new Vector3(fillX, key.Item1, key.Item2);
+
+                                if (useAir || GetBlockFromLocation(fillLocation) != current.blockType || current.blockType != AirID)
+                                    stretchedBlocks.Add(new Tuple<Vector3, int>(
+                                        fillLocation,
+                                        current.blockType));
+                            }
+                        }
+                    }
+                }
+
+                // Extend the last segment—only if there’s more than one block in this row.
+                if (transformed.Count > 1)
+                {
+                    var last = transformed.Last();
+                    int gap = Math.Abs(last.newCoord - transformed[transformed.Count - 2].newCoord);
+                    gap = gap > 0 ? gap - 1 : 0;  // Adjust to avoid overextension.
+                    int extension = (stretchDirection == Direction.posX) ? gap : -gap;
+                    int extensionEnd = last.newCoord + extension;
+                    int fillStart = Math.Min(last.newCoord, extensionEnd);
+                    int fillEnd = Math.Max(last.newCoord, extensionEnd);
+                    for (int fillX = fillStart + 1; fillX < fillEnd; fillX++)
+                    {
+                        Vector3 fillLocation = new Vector3(fillX, key.Item1, key.Item2);
+
+                        if (useAir || GetBlockFromLocation(fillLocation) != last.blockType || last.blockType != AirID)
+                            stretchedBlocks.Add(new Tuple<Vector3, int>(
+                                fillLocation,
+                                last.blockType));
+                    }
+                    Vector3 extensionLocation = new Vector3(extensionEnd, key.Item1, key.Item2);
+
+                    if (useAir || GetBlockFromLocation(extensionLocation) != last.blockType || last.blockType != AirID)
+                        stretchedBlocks.Add(new Tuple<Vector3, int>(
+                            extensionLocation,
+                            last.blockType));
+                }
+            }
+        }
+        else if (stretchDirection == Direction.Up || stretchDirection == Direction.Down)
+        {
+            double centerY = (region.Position1.Y + region.Position2.Y) / 2.0;
+            // Group blocks by (X,Z) – these remain constant when stretching along Y.
+            Dictionary<(int, int), List<(int originalY, int blockType)>> rows = new Dictionary<(int, int), List<(int, int)>>();
+            for (int x = (int)region.Position1.X; x <= (int)region.Position2.X; x++)
+            {
+                for (int y = (int)region.Position1.Y; y <= (int)region.Position2.Y; y++)
+                {
+                    for (int z = (int)region.Position1.Z; z <= (int)region.Position2.Z; z++)
+                    {
+                        Vector3 pos = new Vector3(x, y, z);
+                        int block = GetBlockFromLocation(pos);
+                        var key = (x, z);
+                        if (!rows.ContainsKey(key))
+                            rows[key] = new List<(int, int)>();
+                        rows[key].Add((y, block));
+                    }
+                }
+            }
+
+            // Process each group (constant X and Z).
+            foreach (var kvp in rows)
+            {
+                var key = kvp.Key; // key = (x, z)
+                var rowBlocks = kvp.Value; // Each tuple: (originalY, blockType)
+                var transformed = rowBlocks
+                    .Select(b => new
+                    {
+                        newCoord = (int)Math.Round(centerY + ((double)b.originalY - centerY) * stretchFactor),
+                        blockType = b.blockType,
+                        original = b.originalY
+                    })
+                    .ToList();
+
+                if (stretchDirection == Direction.Down)
+                    transformed.Sort((a, b) => b.newCoord.CompareTo(a.newCoord));
+                else
+                    transformed.Sort((a, b) => a.newCoord.CompareTo(b.newCoord));
+
+                for (int i = 0; i < transformed.Count; i++)
+                {
+                    var current = transformed[i];
+                    
+                    // Clamp Y to world bounds to ensure the new Y value is within world bounds.
+                    Vector3 newLocation = new Vector3(key.Item1, current.newCoord, key.Item2);
+                    int clampedY = (int)Math.Min(Math.Max(newLocation.Y, WorldHeights.Item1), WorldHeights.Item2);
+                    Vector3 finalLocation = new Vector3(newLocation.X, clampedY, newLocation.Z);
+
+                    if (useAir || GetBlockFromLocation(newLocation) != current.blockType || current.blockType != AirID)
+                        stretchedBlocks.Add(new Tuple<Vector3, int>(
+                            finalLocation,
+                            current.blockType));
+
+                    if (i < transformed.Count - 1)
+                    {
+                        var next = transformed[i + 1];
+                        int gap = Math.Abs(next.newCoord - current.newCoord);
+                        if (gap > 1)
+                        {
+                            int start = Math.Min(current.newCoord, next.newCoord);
+                            int end = Math.Max(current.newCoord, next.newCoord);
+                            for (int fillY = start + 1; fillY < end; fillY++)
+                            {
+                                // Clamp the fill Y position to ensure the new Y value is within world bounds.
+                                int clampedFillY = (int)Math.Min(Math.Max(fillY, WorldHeights.Item1), WorldHeights.Item2);
+                                Vector3 fillLocation = new Vector3(key.Item1, clampedFillY, key.Item2);
+
+                                if (useAir || GetBlockFromLocation(fillLocation) != current.blockType || current.blockType != AirID)
+                                    stretchedBlocks.Add(new Tuple<Vector3, int>(
+                                        fillLocation,
+                                        current.blockType));
+                            }
+                        }
+                    }
+                }
+
+                // For Y, only extend if there is more than one block in this group.
+                if (transformed.Count > 1)
+                {
+                    var last = transformed.Last();
+                    int gap = Math.Abs(last.newCoord - transformed[transformed.Count - 2].newCoord);
+                    gap = gap > 0 ? gap - 1 : 0;
+                    int extension = (stretchDirection == Direction.Up) ? gap : -gap;
+                    int extensionEnd = last.newCoord + extension;
+                    int fillStart = Math.Min(last.newCoord, extensionEnd);
+                    int fillEnd = Math.Max(last.newCoord, extensionEnd);
+                    for (int fillY = fillStart + 1; fillY < fillEnd; fillY++)
+                    {
+                        int clampedFillY = (int)Math.Min(Math.Max(fillY, WorldHeights.Item1), WorldHeights.Item2);
+                        Vector3 fillLocation = new Vector3(key.Item1, clampedFillY, key.Item2);
+
+                        if (useAir || GetBlockFromLocation(fillLocation) != last.blockType || last.blockType != AirID)
+                            stretchedBlocks.Add(new Tuple<Vector3, int>(
+                                fillLocation,
+                                last.blockType));
+                    }
+                    // Clamp the extension end before adding to ensure the new Y value is within world bounds.
+                    int clampedExtensionY = (int)Math.Min(Math.Max(extensionEnd, WorldHeights.Item1), WorldHeights.Item2);
+                    Vector3 extensionLocation = new Vector3(key.Item1, clampedExtensionY, key.Item2);
+
+                    if (useAir || GetBlockFromLocation(new Vector3(key.Item1, extensionEnd, key.Item2)) != last.blockType || last.blockType != AirID)
+                        stretchedBlocks.Add(new Tuple<Vector3, int>(
+                            extensionLocation,
+                            last.blockType));
+                }
+            }
+        }
+        else if (stretchDirection == Direction.posZ || stretchDirection == Direction.negZ)
+        {
+            double centerZ = (region.Position1.Z + region.Position2.Z) / 2.0;
+            // Group blocks by (X,Y) – these remain constant when stretching along Z.
+            Dictionary<(int, int), List<(int originalZ, int blockType)>> rows = new Dictionary<(int, int), List<(int, int)>>();
+            for (int x = (int)region.Position1.X; x <= (int)region.Position2.X; x++)
+            {
+                for (int y = (int)region.Position1.Y; y <= (int)region.Position2.Y; y++)
+                {
+                    for (int z = (int)region.Position1.Z; z <= (int)region.Position2.Z; z++)
+                    {
+                        Vector3 pos = new Vector3(x, y, z);
+                        int block = GetBlockFromLocation(pos);
+                        var key = (x, y);
+                        if (!rows.ContainsKey(key))
+                            rows[key] = new List<(int, int)>();
+                        rows[key].Add((z, block));
+                    }
+                }
+            }
+
+            // Process each group (constant X and Y).
+            foreach (var kvp in rows)
+            {
+                var key = kvp.Key; // key = (x, y)
+                var rowBlocks = kvp.Value; // Each tuple: (originalZ, blockType)
+                var transformed = rowBlocks
+                    .Select(b => new
+                    {
+                        newCoord = (int)Math.Round(centerZ + ((double)b.originalZ - centerZ) * stretchFactor),
+                        blockType = b.blockType,
+                        original = b.originalZ
+                    })
+                    .ToList();
+
+                if (stretchDirection == Direction.negZ)
+                    transformed.Sort((a, b) => b.newCoord.CompareTo(a.newCoord));
+                else
+                    transformed.Sort((a, b) => a.newCoord.CompareTo(b.newCoord));
+
+                for (int i = 0; i < transformed.Count; i++)
+                {
+                    var current = transformed[i];
+                    Vector3 newLocation = new Vector3(key.Item1, key.Item2, current.newCoord);
+
+                    if (useAir || GetBlockFromLocation(newLocation) != current.blockType || current.blockType != AirID)
+                        stretchedBlocks.Add(new Tuple<Vector3, int>(
+                            newLocation,
+                            current.blockType));
+
+                    if (i < transformed.Count - 1)
+                    {
+                        var next = transformed[i + 1];
+                        int gap = Math.Abs(next.newCoord - current.newCoord);
+                        if (gap > 1)
+                        {
+                            int start = Math.Min(current.newCoord, next.newCoord);
+                            int end = Math.Max(current.newCoord, next.newCoord);
+                            for (int fillZ = start + 1; fillZ < end; fillZ++)
+                            {
+                                Vector3 fillLocation = new Vector3(key.Item1, key.Item2, fillZ);
+
+                                if (useAir || GetBlockFromLocation(fillLocation) != current.blockType || current.blockType != AirID)
+                                    stretchedBlocks.Add(new Tuple<Vector3, int>(
+                                        fillLocation,
+                                        current.blockType));
+                            }
+                        }
+                    }
+                }
+
+                // For Z, extend the last segment only if there is more than one block.
+                if (transformed.Count > 1)
+                {
+                    var last = transformed.Last();
+                    int gap = Math.Abs(last.newCoord - transformed[transformed.Count - 2].newCoord);
+                    gap = gap > 0 ? gap - 1 : 0;
+                    int extension = (stretchDirection == Direction.posZ) ? gap : -gap;
+                    int extensionEnd = last.newCoord + extension;
+                    int fillStart = Math.Min(last.newCoord, extensionEnd);
+                    int fillEnd = Math.Max(last.newCoord, extensionEnd);
+                    for (int fillZ = fillStart + 1; fillZ < fillEnd; fillZ++)
+                    {
+                        Vector3 fillLocation = new Vector3(key.Item1, key.Item2, fillZ);
+
+                        if (useAir || GetBlockFromLocation(fillLocation) != last.blockType || last.blockType != AirID)
+                            stretchedBlocks.Add(new Tuple<Vector3, int>(
+                                fillLocation,
+                                last.blockType));
+                    }
+                    Vector3 extensionLocation = new Vector3(key.Item1, key.Item2, extensionEnd);
+
+                    if (useAir || GetBlockFromLocation(new Vector3(key.Item1, key.Item2, extensionEnd)) != last.blockType || last.blockType != AirID)
+                        stretchedBlocks.Add(new Tuple<Vector3, int>(
+                            extensionLocation,
+                            last.blockType));
+                }
+            }
+        }
+
+        return stretchedBlocks;
     }
     #endregion
 

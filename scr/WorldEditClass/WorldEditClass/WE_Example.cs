@@ -193,7 +193,8 @@ namespace DNA.CastleMinerZ.UI
             ("massreplace [radii] [source block,(all)] [to block,(all)]",          "Replace all blocks within a circular radii with another."),
             ("walls [block(,array)]",                                              "Build the four sides of the selection."),
             ("smooth (iterations)",                                                "Smooth the elevation in the selection."),
-            ("stack (amount) (useAir)",                                            "Repeat the contents of the selection."),
+            ("stack (amount) (direction) (useAir)",                                "Repeat the contents of the selection."),
+            ("stretch (amount) (direction) (useAir)",                              "Stretch the contents of the selection."),
             ("spell [words(@linebreak)/(/paste)] [block(,array)] (flip) (rotate)", "Draws a text made of blocks relative to position 1."),
             ("hollow (block(,array)) (thickness)",                                 "Hollows out the object contained in this selection."),
             ("fill [block(,array)]",                                               "Fills only the inner-most blocks of an object contained in this selection."),
@@ -1494,29 +1495,67 @@ namespace DNA.CastleMinerZ.UI
         {
             try
             {
+                // Default settings.
                 bool useAir = true; // Enabled by default.
                 int stackCount = args.Length > 0 && int.TryParse(args[0], out int s) ? s : 1;
-                if (args.Length > 1 && args[1].Equals("false", StringComparison.OrdinalIgnoreCase)) useAir = false;
+                Direction stackDirection = Direction.posX;
+
+                // If only the amount is provided, use the cursor location to determine the direction.
+                if (args.Length == 1)
+                {
+                    Vector3 cursorLocation = GetUsersCursorLocation();
+                    stackDirection = GetFacingDirection(_pointToLocation1, cursorLocation);
+                }
+                else if (args.Length == 2)
+                {
+                    // Try to determine if the second argument is a boolean.
+                    if (bool.TryParse(args[1], out bool parsedBool))
+                    {
+                        // When the boolean parses successfully, it means the user omitted a direction.
+                        useAir = parsedBool;
+                        Vector3 cursorLocation = GetUsersCursorLocation();
+                        stackDirection = GetFacingDirection(_pointToLocation1, cursorLocation);
+                    }
+                    else
+                    {
+                        // Otherwise, assume the second argument is a direction.
+                        if (!Enum.TryParse<Direction>(args[1], true, out stackDirection))
+                        {
+                            // If parsing fails, fall back to the cursor location.
+                            Vector3 cursorLocation = GetUsersCursorLocation();
+                            stackDirection = GetFacingDirection(_pointToLocation1, cursorLocation);
+                        }
+                    }
+                }
+                else if (args.Length >= 3)
+                {
+                    // Assume the user provided both a direction and a useAir flag.
+                    if (!Enum.TryParse<Direction>(args[1], true, out stackDirection))
+                    {
+                        // If the direction string doesn’t match, fallback to the cursor direction.
+                        Vector3 cursorLocation = GetUsersCursorLocation();
+                        stackDirection = GetFacingDirection(_pointToLocation1, cursorLocation);
+                    }
+                    // Parse the boolean from the third argument.
+                    if (bool.TryParse(args[2], out bool parsedAir))
+                    {
+                        useAir = parsedAir;
+                    }
+                }
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
 
-                // Axis direction to stack too. // Use in-applications pointer location.
-                Vector3 cursorLocation = GetUsersCursorLocation();
-
-                // Get the direction to stack too using the regions start position and desired direction.
-                Direction stackDirection = GetFacingDirection(definedRegion.Position1, cursorLocation);
-
                 // StackRegion(Region region, Direction facingDirection, int stackCount, bool useAir = true).
-                var region = StackRegion(definedRegion, stackDirection, stackCount, useAir);
+                var stackedBlocks = StackRegion(definedRegion, stackDirection, stackCount, useAir);
 
                 // Save the existing region and clear the upcoming redo.
                 // Extract and save only the vector locations for the initial save.
-                SaveUndo(ExtractVector3HashSet(region));
+                SaveUndo(ExtractVector3HashSet(stackedBlocks));
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (var i in region)
+                foreach (var i in stackedBlocks)
                 {
                     // Get location of block.
                     Vector3 blockLocation = i.Item1;
@@ -1540,7 +1579,110 @@ namespace DNA.CastleMinerZ.UI
                 // Save the builder to new redo.
                 SaveUndo(redoBuilder);
 
-                Console.WriteLine($"{region.Count} blocks have been replaced!");
+                Console.WriteLine($"{stackedBlocks.Count} blocks have been replaced!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region /stretch
+
+        [Command("/stretch")]
+        [Command("/str")]
+        private static void ExecuteStretch(string[] args)
+        {
+            try
+            {
+                // Default settings.
+                bool useAir = true; // Enabled by default.
+                double stretchFactor = args.Length > 0 && double.TryParse(args[0], out double f) ? f : 1.0;
+                Direction stretchDirection = Direction.posX;
+
+                // If only the amount is provided, use the cursor location to determine the direction.
+                if (args.Length == 1)
+                {
+                    Vector3 cursorLocation = GetUsersCursorLocation();
+                    stretchDirection = GetFacingDirection(_pointToLocation1, cursorLocation);
+                }
+                else if (args.Length == 2)
+                {
+                    // Try to determine if the second argument is a boolean.
+                    if (bool.TryParse(args[1], out bool parsedBool))
+                    {
+                        // When the boolean parses successfully, it means the user omitted a direction.
+                        useAir = parsedBool;
+                        Vector3 cursorLocation = GetUsersCursorLocation();
+                        stretchDirection = GetFacingDirection(_pointToLocation1, cursorLocation);
+                    }
+                    else
+                    {
+                        // Otherwise, assume the second argument is a direction.
+                        if (!Enum.TryParse<Direction>(args[1], true, out stretchDirection))
+                        {
+                            // If parsing fails, fall back to the cursor location.
+                            Vector3 cursorLocation = GetUsersCursorLocation();
+                            stretchDirection = GetFacingDirection(_pointToLocation1, cursorLocation);
+                        }
+                    }
+                }
+                else if (args.Length >= 3)
+                {
+                    // Assume the user provided both a direction and a useAir flag.
+                    if (!Enum.TryParse<Direction>(args[1], true, out stretchDirection))
+                    {
+                        // If the direction string doesn’t match, fallback to the cursor direction.
+                        Vector3 cursorLocation = GetUsersCursorLocation();
+                        stretchDirection = GetFacingDirection(_pointToLocation1, cursorLocation);
+                    }
+                    // Parse the boolean from the third argument.
+                    if (bool.TryParse(args[2], out bool parsedAir))
+                    {
+                        useAir = parsedAir;
+                    }
+                }
+
+                // Define the selection region.
+                Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
+
+                // Ensure the stretchDirection is valid.
+                HashSet<Tuple<Vector3, int>> stretchedBlocks;
+                if (stretchDirection == Direction.posX || stretchDirection == Direction.negX
+                    || stretchDirection == Direction.posZ || stretchDirection == Direction.negZ
+                    || stretchDirection == Direction.Up || stretchDirection == Direction.Down)
+                {
+                    // StretchRegion(Region region, Direction stretchDirection, double stretchFactor, bool useAir = true).
+                    stretchedBlocks = StretchRegion(definedRegion, stretchDirection, stretchFactor, useAir);
+                }
+                else
+                {
+                    // An invalid direction was thrown. This should never happen unless its 4D. (ex: posW, negW).
+                    Console.WriteLine($"ERROR: Invalid direction.");
+                    return;
+                }
+
+                // Save current state for undo and clear any existing redo history.
+                SaveUndo(ExtractVector3HashSet(stretchedBlocks));
+                ClearRedo();
+
+                // Apply the changed blocks.
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                foreach (var tuple in stretchedBlocks)
+                {
+                    Vector3 newLocation = tuple.Item1;
+                    int blockType = tuple.Item2;
+
+                    if (GetBlockFromLocation(newLocation) != blockType)
+                    {
+                        PlaceBlock(newLocation, blockType);
+                        redoBuilder.Add(new Tuple<Vector3, int>(newLocation, blockType));
+                    }
+                }
+
+                SaveUndo(redoBuilder);
+                Console.WriteLine($"{stretchedBlocks.Count} blocks have been modified!");
             }
             catch (Exception ex)
             {
