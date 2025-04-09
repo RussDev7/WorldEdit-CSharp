@@ -1267,6 +1267,7 @@ public class WorldEdit
     /// 'Line'
     /// 'Walls'
     /// 'Smooth'
+    /// 'Move'
     /// 'Stack'
     /// 'Stretch'
     /// 'Spell Words'
