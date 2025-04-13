@@ -3109,8 +3109,9 @@ public class WorldEdit
         for (int i = 0; i < density; i++)
         {
             // Generate random positions within the given radius size.
-            // float RandomX = (float)(GenerateRandomNumber(0, radius_size * 2) - radius_size) + (float)pos.X;
-            // float RandomZ = (float)(GenerateRandomNumber(0, radius_size * 2) - radius_size) + (float)pos.Z;
+            // Notice the call uses (radius_size * 2) + 1 to include the upper bound.
+            // float RandomX = (float)(GenerateRandomNumber(0, (radius_size * 2) + 1) - radius_size) + (float)pos.X;
+            // float RandomZ = (float)(GenerateRandomNumber(0, (radius_size * 2) + 1) - radius_size) + (float)pos.Z;
 
             // Generate random positions within the given region.
             float RandomX = (float)GenerateRandomNumber((int)pos.Position1.X, (int)pos.Position2.X);
