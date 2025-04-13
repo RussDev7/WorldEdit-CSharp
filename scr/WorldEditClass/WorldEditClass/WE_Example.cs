@@ -160,87 +160,93 @@ namespace DNA.CastleMinerZ.UI
         private static readonly (string command, string description)[] commands = new (string, string)[]
         {
             // Showcasing Commands.
-            ("cc",                                                                 "Clears the chat. This was made for showcasing."),
-            ("brightness [amount]",                                                "Change the brightness. Use '1' for default. This was made for showcasing."),
-            ("teleport [x] [y] [z]",                                               "Teleport the player to a new position."),
-            ("time [time]",                                                        "Change the worlds time. Use 0-100 for time of day."),
-            ("toggleui",                                                           "Toggles the HUD and UI visibility."),
+            ("cc",                                                                     "Clears the chat. This was made for showcasing."),
+            ("brightness [amount]",                                                    "Change the brightness. Use '1' for default. This was made for showcasing."),
+            ("teleport [x] [y] [z]",                                                   "Teleport the player to a new position."),
+            ("time [time]",                                                            "Change the worlds time. Use 0-100 for time of day."),
+            ("toggleui",                                                               "Toggles the HUD and UI visibility."),
 
             // General Commands.
-            ("help (page)",                                                        "Display all available commands."),
-            ("undo (times)",                                                       "Undoes the last action (from history)."),
-            ("redo (times)",                                                       "Redoes the last action (from history)."),
+            ("help (page)",                                                            "Display all available commands."),
+            ("undo (times)",                                                           "Undoes the last action (from history)."),
+            ("redo (times)",                                                           "Redoes the last action (from history)."),
+            ("clearhistory",                                                           "Clear your history."),
 
             // Navigation Commands.
-            ("unstuck",                                                            "Escape from being stuck inside a block."),
-            ("ascend (levels)",                                                    "Go up a floor."),
-            ("descend (levels)",                                                   "Go down a floor."),
-            ("ceil",                                                               "Go to the ceiling."),
-            ("thru",                                                               "Pass through walls."),
-            ("jumpto",                                                             "Teleport to the cursors location."),
-            ("up [amount]",                                                        "Go upwards some distance."),
-            ("down [amount]",                                                      "Go downwards some distance."),
+            ("unstuck",                                                                "Escape from being stuck inside a block."),
+            ("ascend (levels)",                                                        "Go up a floor."),
+            ("descend (levels)",                                                       "Go down a floor."),
+            ("ceil",                                                                   "Go to the ceiling."),
+            ("thru",                                                                   "Pass through walls."),
+            ("jumpto",                                                                 "Teleport to the cursors location."),
+            ("up [amount]",                                                            "Go upwards some distance."),
+            ("down [amount]",                                                          "Go downwards some distance."),
 
             // Selection Commands.
-            ("wand [on/off]",                                                      "Get the wand item."),
-            ("pos [pos1/pos2..]",                                                  "Set positions."),
+            ("pos [pos1/pos2..]",                                                      "Set positions."),
+            ("wand [on/off]",                                                          "Get the wand item."),
+            ("count [find block(,array)]",                                             "Counts the number of blocks matching a mask."),
 
             // Region Commands.
-            ("set [block(,array)] (hollow)",                                       "Sets all the blocks in the region."),
-            ("line [block(,array)] (thickness)",                                   "Draws line segments between two positions."),
-            ("replace [source block,(all)] [to block,(all)]",                      "Replace all blocks in the selection with another."),
-            ("allexcept [source block(,array)] (to block(,array))",                "Replace all blocks except a desired block pattern."),
-            ("massreplace [radii] [source block,(all)] [to block,(all)]",          "Replace all blocks within a circular radii with another."),
-            ("walls [block(,array)]",                                              "Build the four sides of the selection."),
-            ("smooth (iterations)",                                                "Smooth the elevation in the selection."),
-            ("move [amount] (direction)",                                          "Move the contents of the selection."),
-            ("stack (amount) (direction) (useAir)",                                "Repeat the contents of the selection."),
-            ("stretch (amount) (direction) (useAir)",                              "Stretch the contents of the selection."),
-            ("spell [words(@linebreak)/(/paste)] [block(,array)] (flip) (rotate)", "Draws a text made of blocks relative to position 1."),
-            ("hollow (block(,array)) (thickness)",                                 "Hollows out the object contained in this selection."),
-            ("fill [block(,array)]",                                               "Fills only the inner-most blocks of an object contained in this selection."),
-            ("wrap [replace block(,array)] (exclude surface)",                     "Fills only the outer-most air blocks of an object contained in this selection."),
-            ("matrix [radius] [spacing] (snow) (default(,array))",                 "Places your clipboard spaced out in intervals."),
-            ("snow [block(,array)] [radius]",                                      "Places a pattern of blocks on ground level around position 1."),
-            ("forest [area_size] [density] (max_height)",                          "Make a forest within the region."),
-            ("tree (max_height)",                                                  "Make a tree at position 1."),
+            ("set [block(,array)] (hollow)",                                           "Sets all the blocks in the region."),
+            ("line [block(,array)] (thickness)",                                       "Draws line segments between two positions."),
+            ("replace [source block,(all)] [to block,(all)]",                          "Replace all blocks in the selection with another."),
+            ("allexcept [source block(,array)] (to block(,array))",                    "Replace all blocks except a desired block pattern."),
+            ("overlay [replace block(,array)]",                                        "Set a block on top of blocks in the region."),
+            ("walls [block(,array)]",                                                  "Build the four sides of the selection."),
+            ("smooth (iterations)",                                                    "Smooth the elevation in the selection."),
+            ("move [amount] (direction)",                                              "Move the contents of the selection."),
+            ("stack (amount) (direction) (useAir)",                                    "Repeat the contents of the selection."),
+            ("stretch (amount) (direction) (useAir)",                                  "Stretch the contents of the selection."),
+            ("spell [words(@linebreak)/(/paste)] [block(,array)] (flip) (rotate)",     "Draws a text made of blocks relative to position 1."),
+            ("hollow (block(,array)) (thickness)",                                     "Hollows out the object contained in this selection."),
+            ("fill [block(,array)]",                                                   "Fills only the inner-most blocks of an object contained in this selection."),
+            ("wrap [replace block(,array)] (wrap direction(all)) (exclude direction)", "Fills only the outer-most air blocks of an object contained in this selection."),
+            ("matrix [radius] [spacing] (snow) (default(,array))",                     "Places your clipboard spaced out in intervals."),
+            ("snow [block(,array)] [radius]",                                          "Places a pattern of blocks on ground level around position 1."),
+            ("forest [area_size] [density] (max_height)",                              "Make a forest within the region."),
+            ("tree (max_height)",                                                      "Make a tree at position 1."),
 
             // Generation Commands.
-            ("floor [block(,array)] [radius] (hollow)",                            "Makes a filled floor."),
-            ("cube [block(,array)] [radii] (hollow)",                              "Makes a filled cube."),
-            ("prism [block(,array)] [length] [width] (height) (hollow)",           "Makes a filled prism."),
-            ("sphere [block(,array)] [radii] (hollow) (height)",                   "Makes a filled sphere."),
-            ("pyramid [block(,array)] [size] (hollow)",                            "Makes a filled pyramid."),
-            ("cone [block(,array)] [radii] [height] (hollow)",                     "Makes a filled cone."),
-            ("cylinder [block(,array)] [radii] [height] (hollow)",                 "Makes a filled cylinder."),
-            ("diamond [r block(,array)] [radii] (hollow) (squared)",               "Makes a filled diamond."),
-            ("ring [block(,array)] [radius] (hollow)",                             "Makes a filled ring."),
-            ("ringarray [block(,array)] [amount] [space]",                         "Makes a hollowed ring at evenly spaced intervals."),
-            ("generate [block(,array)] [expression(clipboard)] (hollow)",          "Generates a shape according to a formula."),
+            ("floor [block(,array)] [radius] (hollow)",                                "Makes a filled floor."),
+            ("cube [block(,array)] [radii] (hollow)",                                  "Makes a filled cube."),
+            ("prism [block(,array)] [length] [width] (height) (hollow)",               "Makes a filled prism."),
+            ("sphere [block(,array)] [radii] (hollow) (height)",                       "Makes a filled sphere."),
+            ("pyramid [block(,array)] [size] (hollow)",                                "Makes a filled pyramid."),
+            ("cone [block(,array)] [radii] [height] (hollow)",                         "Makes a filled cone."),
+            ("cylinder [block(,array)] [radii] [height] (hollow)",                     "Makes a filled cylinder."),
+            ("diamond [r block(,array)] [radii] (hollow) (squared)",                   "Makes a filled diamond."),
+            ("ring [block(,array)] [radius] (hollow)",                                 "Makes a filled ring."),
+            ("ringarray [block(,array)] [amount] [space]",                             "Makes a hollowed ring at evenly spaced intervals."),
+            ("generate [block(,array)] [expression(clipboard)] (hollow)",              "Generates a shape according to a formula."),
 
             // Schematic and Clipboard Commands.
-            ("schematic [save] (saveAir)",                                         "Save your clipboard into a schematic file."),
-            ("schematic [load] (loadAir)",                                         "Load a schematic into your clipboard."),
-            ("copy",                                                               "Copy the selection to the clipboard."),
-            ("cut",                                                                "Cut the selection to the clipboard."),
-            ("paste (useAir)",                                                     "Paste the clipboard’s contents."),
-            ("rotate (rotateY) (rotateX) (rotateZ)",                               "Rotate the contents of the clipboard."),
-            ("flip (direction)",                                                   "Flip the contents of the clipboard across the origin."),
-            ("clearclipboard",                                                     "Clear your clipboard."),
+            ("schematic [save] (saveAir)",                                             "Save your clipboard into a schematic file."),
+            ("schematic [load] (loadAir)",                                             "Load a schematic into your clipboard."),
+            ("copy",                                                                   "Copy the selection to the clipboard."),
+            ("cut",                                                                    "Cut the selection to the clipboard."),
+            ("paste (useAir)",                                                         "Paste the clipboard’s contents."),
+            ("rotate (rotateY) (rotateX) (rotateZ)",                                   "Rotate the contents of the clipboard."),
+            ("flip (direction)",                                                       "Flip the contents of the clipboard across the origin."),
+            ("clearclipboard",                                                         "Clear your clipboard."),
 
             // Tool Commands.
-            ("tool [on/off] [/command], " +
-                 "tool command [/command]",                                        "Binds a tool to the item in your hand."),
+            ("tool [on/off] [/command],     " +
+                     "tool command [/command]",                                            "Binds a tool to the item in your hand."),
 
             // Brush Commands.
-            ("brush [on/off] (block(,array)) (size), " +
-                 "brush block [block(,array)], " +
-                 "brush shape [shape], " +
-                 "brush size [size], " +
-                 "brush height [height], " +
-                 "brush hollow [true/false], " +
-                 "brush replace [true/false], " +
-                 "brush rapid [true/false]",                                       "Brushing commands.")
+            ("brush [on/off] (block(,array)) (size),     " +
+                     "brush block [block(,array)],     " +
+                     "brush shape [shape],     " +
+                     "brush size [size],     " +
+                     "brush height [height],     " +
+                     "brush hollow [true/false],     " +
+                     "brush replace [true/false],     " +
+                     "brush rapid [true/false]",                                           "Brushing commands."),
+
+            // Utility Commands.
+            ("removenear [radii]",                                                     "Remove all blocks within a cylindrical radii."),
+            ("replacenear [radii] [source block,(all)] [to block,(all)]",              "Replace all blocks within a cylindrical radii with another.")
         };
         #endregion
 
@@ -532,6 +538,26 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
+        #region /clearhistory
+
+        [Command("/clearhistory")]
+        [Command("/clearh")]
+        private static void ExecuteClearHistory()
+        {
+            try
+            {
+                // Clear existing clearhistory.
+                ClearHistory();
+
+                Console.WriteLine($"History has been cleared!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
         // Navigation Commands.
 
         #region /unstuck
@@ -620,7 +646,7 @@ namespace DNA.CastleMinerZ.UI
                     // Stop if no valid location is found.
                     if (nextLocation == newLocation)
                     {
-                        Console.WriteLine($"Stopped at level {levelCount}: No further valid location found.");
+                        Console.WriteLine($"Stopped at level {levelCount}: No furthest valid location found.");
                         break;
                     }
                     else
@@ -670,7 +696,7 @@ namespace DNA.CastleMinerZ.UI
                     // Stop if no valid location is found.
                     if (nextLocation == newLocation)
                     {
-                        Console.WriteLine($"Stopped at level {levelCount}: No further valid location found.");
+                        Console.WriteLine($"Stopped at level {levelCount}: No furthest valid location found.");
                         break;
                     }
                     else
@@ -872,6 +898,40 @@ namespace DNA.CastleMinerZ.UI
 
         // Selection Commands.
 
+        #region /pos
+
+        [Command("/pos")]
+        private static void ExecutePos(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("ERROR: Command usage /pos [pos1/pos2..]");
+                return;
+            }
+
+            try
+            {
+                int point = int.TryParse(args[0], out int p) ? p : 1;
+
+                // Check what position to set.
+                if (point == 1)
+                    _pointToLocation1 = GetUsersLocation();
+                else if (point == 2)
+                    _pointToLocation2 = GetUsersLocation();
+
+                // Ensure point is within range.
+                if (point == 1 || point == 2)
+                    Console.WriteLine($"Position {point} ({(point == 1 ? $"{Math.Round(_pointToLocation1.X)}, {Math.Round(_pointToLocation1.Y)}, {Math.Round(_pointToLocation1.Z)}" : $"{Math.Round(_pointToLocation2.X)}, {Math.Round(_pointToLocation2.Y)}, {Math.Round(_pointToLocation2.Z)}")}) has been set!");
+                else
+                    Console.WriteLine($"Position {point} is not valid!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
         #region /wand
 
         [Command("/wand")]
@@ -937,32 +997,59 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
-        #region /pos
+        #region /count
 
-        [Command("/pos")]
-        private static void ExecutePos(string[] args)
+        [Command("/count")]
+        private static void ExecuteCount(string[] args)
         {
             if (args.Length < 1)
             {
-                Console.WriteLine("ERROR: Command usage /pos [pos1/pos2..]");
+                Console.WriteLine("ERROR: Command usage /count [find block(,array)]");
                 return;
             }
 
             try
             {
-                int point = int.TryParse(args[0], out int p) ? p : 1;
+                string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
 
-                // Check what position to set.
-                if (point == 1)
-                    _pointToLocation1 = GetUsersLocation();
-                else if (point == 2)
-                    _pointToLocation2 = GetUsersLocation();
+                // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
+                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
 
-                // Ensure point is within range.
-                if (point == 1 || point == 2)
-                    Console.WriteLine($"Position {point} ({(point == 1 ? $"{Math.Round(_pointToLocation1.X)}, {Math.Round(_pointToLocation1.Y)}, {Math.Round(_pointToLocation1.Z)}" : $"{Math.Round(_pointToLocation2.X)}, {Math.Round(_pointToLocation2.Y)}, {Math.Round(_pointToLocation2.Z)}")}) has been set!");
+                // Make sure the input is within the min/max.
+                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                {
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    return;
+                }
+
+                // Define location data.
+                Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
+
+                // Decide if air blocks (denoted by AirID) should be ignored.
+                // For example, if the input does NOT include AirID, then we ignore air in the region.
+                int ignoreBlock = (!blockPatternNumbers.Contains(AirID)) ? AirID : -1;
+
+                // CountRegion(Region region, List<int> countBlocks, int ignoreBlock = -1).
+                // Pass the list of block IDs (converted from the array) to CountRegion, along with the ignore block.
+                var regionBlocks = CountRegion(definedRegion, blockPatternNumbers.ToList(), ignoreBlock);
+
+                // Group the blocks by block type (Item2 in the tuple) and count them.
+                var blockCounts = regionBlocks
+                    .GroupBy(t => t.Item2)
+                    .Select(g => new { BlockType = g.Key, Count = g.Count() });
+
+                // Output the results, displaying each unique block's count on a new line.
+                if (regionBlocks.Count > 0)
+                {
+                    Console.WriteLine("Blocks found matching the criteria:");
+                    foreach (var block in blockCounts)
+                    {
+                        Console.WriteLine($"Block ID {block.BlockType}: {block.Count}");
+                    }
+                }
                 else
-                    Console.WriteLine($"Position {point} is not valid!");
+                    Console.WriteLine($"{regionBlocks.Count} blocks found matching the criteria.");
             }
             catch (Exception ex)
             {
@@ -1180,7 +1267,7 @@ namespace DNA.CastleMinerZ.UI
                         HashSet<int> excludedBlocks = new HashSet<int> { AirID, 26 }; // IDs to exclude. Block ID 26 'Torch' crashes.
                         int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePattern);
 
-                        // Place block if it doesn't already exist. (improves the performance) 
+                        // Place block if it doesn't already exist. (improves the performance).
                         if (GetBlockFromLocation(i) != replaceBlock)
                         {
                             PlaceBlock(i, replaceBlock);
@@ -1264,7 +1351,7 @@ namespace DNA.CastleMinerZ.UI
                         // Get random block from input.
                         int replaceBlock = GetRandomBlockFromPattern(replacePattern);
 
-                        // Place block if it doesn't already exist. (improves the performance) 
+                        // Place block if it doesn't already exist. (improves the performance).
                         if (GetBlockFromLocation(i) != replaceBlock)
                         {
                             PlaceBlock(i, replaceBlock);
@@ -1287,80 +1374,56 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
-        #region /massreplace
+        #region /overlay
 
-        [Command("/massreplace")]
-        [Command("/massre")]
-        private static void ExecuteMassReplace(string[] args)
+        [Command("/overlay")]
+        private static void ExecuteOverlay(string[] args)
         {
-            if (args.Length < 3)
+            if (args.Length < 1)
             {
-                Console.WriteLine("ERROR: Command usage /massreplace [radii] [source block,(all)] [to block,(all)]");
+                Console.WriteLine("ERROR: Command usage /overlay [replace block(,array)]");
                 return;
             }
 
             try
             {
-                int radii = int.TryParse(args[0], out int r) ? r : 1;
-                string searchPattern = !string.IsNullOrEmpty(args[1]) ? args[1] : "2";
-                string replacePattern = !string.IsNullOrEmpty(args[2]) ? args[2] : "1";
+                string replacePattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "0";
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                searchPattern = (searchPattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern);
-                replacePattern = (replacePattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
+                replacePattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
 
                 // Make sure the input is within the min/max.
-                int[] searchPatternNumbers = (searchPattern == "all") ? new int[1] : (!string.IsNullOrEmpty(searchPattern)) ? searchPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (searchPatternNumbers.Length == 0 || searchPatternNumbers.Min() < BlockIDValues.Item1 || searchPatternNumbers.Max() > BlockIDValues.Item2)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
-                    return;
-                }
-                int[] replacePatternNumbers = (replacePattern == "all") ? new int[1] : (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
+                int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
                 if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
                 {
                     Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
-                // Get the further distance from the world boundaries.
-                int furthestDistance = (int)Math.Max(Math.Abs(_pointToLocation1.Y - WorldHeights.Item2), Math.Abs(_pointToLocation1.Y - WorldHeights.Item1));
+                // Define location data.
+                Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
 
-                // Get the center point.
-                Vector3 centerOffset = new Vector3(_pointToLocation1.X, _pointToLocation1.Y - (furthestDistance / 2), _pointToLocation1.Z);
-
-                // MakeCylinder(Vector3 pos, double radiusX, double radiusZ, int height, bool hollow, int ignoreBlock = -1).
-                // Check if the from-block pattern contains air, and if so, have the region save it.
-                var region = (searchPattern == "all" || searchPatternNumbers.Contains(AirID)) ? MakeCylinder(centerOffset, radii, radii, furthestDistance, false) : MakeCylinder(centerOffset, radii, radii, WorldHeights.Item2 * 2, false, AirID);
+                // OverlayObject(Region region, List<int> replaceBlockPattern).
+                var replaceBlockPattern = replacePattern.Split(',').Select(int.Parse).ToList();
+                var region = OverlayObject(definedRegion, replaceBlockPattern);
 
                 // Save the existing region and clear the upcoming redo.
-                if (searchPattern == "all")
-                    SaveUndo(region);
-                else
-                    SaveUndo(region, int.Parse(searchPattern));
+                SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
                 foreach (Vector3 i in region)
                 {
-                    // Get the current block type.
-                    int currentBlock = GetBlockFromLocation(i);
+                    // Get random block from input.
+                    int block = GetRandomBlockFromPattern(replacePattern);
 
-                    // Check if the current block is a block to replace.
-                    if ((searchPattern == "all" && currentBlock != AirID) || currentBlock.ToString() == searchPattern) // Make sure not to replace 'air' when using 'all' mode.
+                    // Place block if it doesn't already exist. (improves the performance)
+                    if (GetBlockFromLocation(i) != block)
                     {
-                        // Get random block from input.
-                        HashSet<int> excludedBlocks = new HashSet<int> { AirID, 26 }; // IDs to exclude. Block ID 26 'Torch' crashes.
-                        int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePattern);
+                        PlaceBlock(i, block);
 
-                        // Place block if it doesn't already exist. (improves the performance) 
-                        if (GetBlockFromLocation(i) != replaceBlock)
-                        {
-                            PlaceBlock(i, replaceBlock);
-
-                            // Add block to redo.
-                            redoBuilder.Add(new Tuple<Vector3, int>(i, replaceBlock));
-                        }
+                        // Add block to redo.
+                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
                     }
                 }
 
@@ -1975,14 +2038,38 @@ namespace DNA.CastleMinerZ.UI
         {
             if (args.Length < 1)
             {
-                Console.WriteLine("ERROR: Command usage /wrap [replace block(,array)] (exclude surface)");
+                Console.WriteLine("ERROR: Command usage /wrap [replace block(,array)] (wrap direction(all)) (exclude direction)");
                 return;
             }
 
             try
             {
                 string replacePattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "0";
-                bool excludeSurface = args.Length > 1 && args[1].Equals("true", StringComparison.OrdinalIgnoreCase);
+
+                // Default settings.
+                Direction? wrapDirection = null;
+                Direction? excludeDirection = null;
+
+                if (args.Length >= 2 && !string.IsNullOrEmpty(args[1]) && args[1] != "all")
+                {
+                    if (Enum.TryParse<Direction>(args[1], true, out var parsedWrap))
+                        wrapDirection = parsedWrap;
+                    else
+                    {
+                        Console.WriteLine("ERROR: Invalid wrap direction specified.");
+                        return;
+                    }
+                }
+                if (args.Length >= 3 && !string.IsNullOrEmpty(args[2]))
+                {
+                    if (Enum.TryParse<Direction>(args[2], true, out var parsedExclude))
+                        excludeDirection = parsedExclude;
+                    else
+                    {
+                        Console.WriteLine("ERROR: Invalid wrap direction specified.");
+                        return;
+                    }
+                }
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
                 replacePattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
@@ -1998,9 +2085,9 @@ namespace DNA.CastleMinerZ.UI
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
 
-                // WrapObject(Region region, List<int> replaceBlockPattern, bool excludeSurface).
+                // WrapObject(Region region, List<int> replaceBlockPattern, Direction? wrapDirection = null, Direction? excludeDirection = null).
                 var replaceBlockPattern = replacePattern.Split(',').Select(int.Parse).ToList();
-                var region = WrapObject(definedRegion, replaceBlockPattern, excludeSurface);
+                var region = WrapObject(definedRegion, replaceBlockPattern, wrapDirection, excludeDirection);
 
                 // Save the existing region and clear the upcoming redo.
                 SaveUndo(region);
@@ -3319,6 +3406,7 @@ namespace DNA.CastleMinerZ.UI
         #region /clearclipboard
 
         [Command("/clearclipboard")]
+        [Command("/clearc")]
         private static void ExecuteClearClipboard()
         {
             try
@@ -3609,6 +3697,159 @@ namespace DNA.CastleMinerZ.UI
                                   $"Hollow Mode: {_brushHollow}\n" +
                                   $"Replace Mode: {_brushReplaceMode}\n" +
                                   $"Rapid Mode: {_brushRapidMode}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
+        // Utility Commands.
+
+        #region /removenear
+
+        [Command("/removenear")]
+        [Command("/nuke")]
+        private static void ExecuteRemoveNear(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("ERROR: Command usage /removenear [radii]");
+                return;
+            }
+
+            try
+            {
+                int radii = int.TryParse(args[0], out int r) ? r : 1;
+
+                // Get the shortest distance from the world boundaries.
+                int furthestDistance = (int)Math.Max(Math.Abs(_pointToLocation1.Y - WorldHeights.Item2), Math.Abs(_pointToLocation1.Y - WorldHeights.Item1));
+                int shortestDistance = (int)Math.Min(Math.Abs(_pointToLocation1.Y - WorldHeights.Item2), Math.Abs(_pointToLocation1.Y - WorldHeights.Item1));
+                
+                // Get the max height based on the input and the cap.
+                int searchHeight = (radii <= furthestDistance) ? radii : furthestDistance;
+        
+                // Get the center point.
+                Vector3 centerOffset = new Vector3(_pointToLocation1.X, _pointToLocation1.Y - (searchHeight / 2), _pointToLocation1.Z);
+
+                // MakeCylinder(Vector3 pos, double radiusX, double radiusZ, int height, bool hollow, int ignoreBlock = -1).
+                var region = MakeCylinder(centerOffset, radii, radii, searchHeight, false, AirID);
+
+                // Save the existing region and clear the upcoming redo.
+                SaveUndo(region);
+                ClearRedo();
+
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                foreach (Vector3 i in region)
+                {
+                    // Place block if it doesn't already exist. (improves the performance).
+                    if (GetBlockFromLocation(i) != AirID)
+                    {
+                        PlaceBlock(i, AirID);
+
+                        // Add block to redo.
+                        redoBuilder.Add(new Tuple<Vector3, int>(i, AirID));
+                    }
+                }
+
+                // Save the actions to undo stack.
+                SaveUndo(redoBuilder);
+
+                Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region /replacenear
+
+        [Command("/replacenear")]
+        [Command("/renear")]
+        private static void ExecuteReplaceNear(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.WriteLine("ERROR: Command usage /replacenear [radii] [source block,(all)] [to block,(all)]");
+                return;
+            }
+
+            try
+            {
+                int radii = int.TryParse(args[0], out int r) ? r : 1;
+                string searchPattern = !string.IsNullOrEmpty(args[1]) ? args[1] : "2";
+                string replacePattern = !string.IsNullOrEmpty(args[2]) ? args[2] : "1";
+
+                // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
+                searchPattern = (searchPattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern);
+                replacePattern = (replacePattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
+
+                // Make sure the input is within the min/max.
+                int[] searchPatternNumbers = (searchPattern == "all") ? new int[1] : (!string.IsNullOrEmpty(searchPattern)) ? searchPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
+                if (searchPatternNumbers.Length == 0 || searchPatternNumbers.Min() < BlockIDValues.Item1 || searchPatternNumbers.Max() > BlockIDValues.Item2)
+                {
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    return;
+                }
+                int[] replacePatternNumbers = (replacePattern == "all") ? new int[1] : (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
+                {
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    return;
+                }
+
+                // Get the shortest distance from the world boundaries.
+                int furthestDistance = (int)Math.Max(Math.Abs(_pointToLocation1.Y - WorldHeights.Item2), Math.Abs(_pointToLocation1.Y - WorldHeights.Item1));
+                int shortestDistance = (int)Math.Min(Math.Abs(_pointToLocation1.Y - WorldHeights.Item2), Math.Abs(_pointToLocation1.Y - WorldHeights.Item1));
+                
+                // Get the max height based on the input and the cap.
+                int searchHeight = (radii <= furthestDistance) ? radii : furthestDistance;
+        
+                // Get the center point.
+                Vector3 centerOffset = new Vector3(_pointToLocation1.X, _pointToLocation1.Y - (searchHeight / 2), _pointToLocation1.Z);
+
+                // MakeCylinder(Vector3 pos, double radiusX, double radiusZ, int height, bool hollow, int ignoreBlock = -1).
+                // Check if the from-block pattern contains air, and if so, have the region save it.
+                var region = (searchPattern == "all" || searchPatternNumbers.Contains(AirID)) ? MakeCylinder(centerOffset, radii, radii, searchHeight, false) : MakeCylinder(centerOffset, radii, radii, searchHeight, false, AirID);
+
+                // Save the existing region and clear the upcoming redo.
+                if (searchPattern == "all")
+                    SaveUndo(region);
+                else
+                    SaveUndo(region, int.Parse(searchPattern));
+                ClearRedo();
+
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                foreach (Vector3 i in region)
+                {
+                    // Get the current block type.
+                    int currentBlock = GetBlockFromLocation(i);
+
+                    // Check if the current block is a block to replace.
+                    if ((searchPattern == "all" && currentBlock != AirID) || currentBlock.ToString() == searchPattern) // Make sure not to replace 'air' when using 'all' mode.
+                    {
+                        // Get random block from input.
+                        HashSet<int> excludedBlocks = new HashSet<int> { AirID, 26 }; // IDs to exclude. Block ID 26 'Torch' crashes.
+                        int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePattern);
+
+                        // Place block if it doesn't already exist. (improves the performance).
+                        if (GetBlockFromLocation(i) != replaceBlock)
+                        {
+                            PlaceBlock(i, replaceBlock);
+
+                            // Add block to redo.
+                            redoBuilder.Add(new Tuple<Vector3, int>(i, replaceBlock));
+                        }
+                    }
+                }
+
+                // Save the actions to undo stack.
+                SaveUndo(redoBuilder);
+
+                Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {

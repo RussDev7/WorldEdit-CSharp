@@ -1152,6 +1152,7 @@ public class WorldEdit
     /// 'Descend'
     /// 'Ceil'
     /// 'Thru'
+    /// 'ClearHistory'
     /// 
     /// </summary>
     #region Navigation Methods
@@ -1259,12 +1260,63 @@ public class WorldEdit
     }
     #endregion
 
+    #region ClearHistory
+
+    public static void ClearHistory()
+    {
+        UndoStack.Clear();
+        RedoStack.Clear();
+    }
+    #endregion
+
+    #endregion
+
+    /// <summary>
+    /// 
+    /// 'Count'
+    /// 
+    /// </summary>
+    #region Selection Methods
+
+    #region Count
+
+    public static HashSet<Tuple<Vector3, int>> CountRegion(Region region, List<int> countBlocks, int ignoreBlock = -1)
+    {
+        HashSet<Tuple<Vector3, int>> regionBlocks = new HashSet<Tuple<Vector3, int>>();
+
+        for (int y = (int)region.Position1.Y; y <= (int)region.Position2.Y; ++y)
+        {
+            // Ensure Y is within the world's height constraints.
+            if (y > WorldHeights.Item2 || y < WorldHeights.Item1)
+                continue;
+
+            for (int x = (int)region.Position1.X; x <= (int)region.Position2.X; ++x)
+            {
+                for (int z = (int)region.Position1.Z; z <= (int)region.Position2.Z; ++z)
+                {
+                    Vector3 newPos = new Vector3(x, y, z);
+                    int blockType = GetBlockFromLocation(newPos);
+
+                    // If ignore block was specified, skip locations matching the block id.
+                    if (ignoreBlock != -1 && blockType == ignoreBlock) continue;
+
+                    if (countBlocks.Contains(blockType))
+                        regionBlocks.Add(new Tuple<Vector3, int>(newPos, blockType));
+                }
+            }
+        }
+
+        return regionBlocks;
+    }
+    #endregion
+
     #endregion
 
     /// <summary>
     /// 
     /// 'Fill Region'
     /// 'Line'
+    /// 'Overlay'
     /// 'Walls'
     /// 'Smooth'
     /// 'Move'
@@ -1283,7 +1335,7 @@ public class WorldEdit
     /// </summary>
     #region Region Methods
 
-    #region Fill Region
+    #region Fill
 
     public static HashSet<Vector3> FillRegion(Region region, bool hollow, int ignoreBlock = -1)
     {
@@ -1400,6 +1452,67 @@ public class WorldEdit
     }
     #endregion
 
+    #endregion
+
+    #region Overlay
+
+    public static HashSet<Vector3> OverlayObject(Region region, List<int> replaceBlockPattern)
+    {
+        HashSet<Vector3> regionBlocks = new HashSet<Vector3>();
+
+        int minY = Math.Min((int)region.Position1.Y, (int)region.Position2.Y);
+        int maxY = Math.Max((int)region.Position1.Y, (int)region.Position2.Y) + 1;
+
+        int minX = Math.Min((int)region.Position1.X, (int)region.Position2.X);
+        int maxX = Math.Max((int)region.Position1.X, (int)region.Position2.X) + 1;
+
+        int minZ = Math.Min((int)region.Position1.Z, (int)region.Position2.Z);
+        int maxZ = Math.Max((int)region.Position1.Z, (int)region.Position2.Z) + 1;
+
+        // Iterate over the range of blocks to wrap.
+        for (int y = minY; y < maxY; y++)
+        {
+            for (int x = minX; x < maxX; x++)
+            {
+                for (int z = minZ; z < maxZ; z++)
+                {
+                    Vector3 currentPosition = new Vector3(x, y, z);
+
+                    // Check if the current block is different from the target block type.
+                    bool overlayBlocks = false;
+                    if (GetBlockFromLocation(currentPosition) != AirID)
+                    {
+                        overlayBlocks = !replaceBlockPattern.Contains(GetBlockFromLocation(currentPosition));
+                    }
+
+                    if (overlayBlocks)
+                    {
+                        // Try wrapping the block in 7 possible adjacent positions.
+                        for (int direction = 0; direction < 2; direction++)
+                        {
+                            switch (direction)
+                            {
+                                case 0:
+                                    currentPosition = new Vector3(x, y, z);
+                                    break;
+                                case 1:
+                                    currentPosition = new Vector3(x, y + 1f, z);
+                                    break;
+                            }
+
+                            // If the block is empty, wrap it with the new block type.
+                            if (GetBlockFromLocation(currentPosition) == AirID)
+                            {
+                                regionBlocks.Add(currentPosition);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return regionBlocks;
+    }
     #endregion
 
     #region Walls
@@ -2816,77 +2929,67 @@ public class WorldEdit
 
     #region Wrap
 
-    public static HashSet<Vector3> WrapObject(Region region, List<int> replaceBlockPattern, bool excludeSurface)
+    public static HashSet<Vector3> WrapObject(Region region, List<int> replaceBlockPattern, Direction? wrapDirection = null, Direction? excludeDirection = null)
     {
         HashSet<Vector3> regionBlocks = new HashSet<Vector3>();
 
         int minY = Math.Min((int)region.Position1.Y, (int)region.Position2.Y);
         int maxY = Math.Max((int)region.Position1.Y, (int)region.Position2.Y) + 1;
-
         int minX = Math.Min((int)region.Position1.X, (int)region.Position2.X);
         int maxX = Math.Max((int)region.Position1.X, (int)region.Position2.X) + 1;
-
         int minZ = Math.Min((int)region.Position1.Z, (int)region.Position2.Z);
         int maxZ = Math.Max((int)region.Position1.Z, (int)region.Position2.Z) + 1;
 
-        // Iterate over the range of blocks to wrap.
+        // Define offsets for each direction.
+        var availableDirections = new Dictionary<Direction, Vector3>
+        {
+            { Direction.posX, new Vector3(1, 0, 0) },
+            { Direction.negX, new Vector3(-1, 0, 0) },
+            { Direction.posZ, new Vector3(0, 0, 1) },
+            { Direction.negZ, new Vector3(0, 0, -1) },
+            { Direction.Up, new Vector3(0, 1, 0) },
+            { Direction.Down, new Vector3(0, -1, 0) }
+        };
+
+        // Determine which directions to use based on the user's arguments:
+        // 1. If a wrapDirection is specified, only use that.
+        // 2. Otherwise, use all directions.
+        List<KeyValuePair<Direction, Vector3>> directionsToApply = wrapDirection.HasValue
+            ? availableDirections.Where(d => d.Key == wrapDirection.Value).ToList()
+            : availableDirections.ToList();
+
+        // If an excludeDirection is provided, remove it.
+        if (excludeDirection.HasValue)
+        {
+            directionsToApply = directionsToApply.Where(d => d.Key != excludeDirection.Value).ToList();
+        }
+
+        // Iterate over each block in the region.
         for (int y = minY; y < maxY; y++)
         {
             for (int x = minX; x < maxX; x++)
             {
                 for (int z = minZ; z < maxZ; z++)
                 {
-                    Vector3 currentPosition = new Vector3(x, y, z);
-
-                    // Check if the current block is different from the target block type.
-                    bool wrapBlocks = false;
-                    if (GetBlockFromLocation(currentPosition) != AirID)
+                    Vector3 currentBlockPos = new Vector3(x, y, z);
+                    // First, check if the block is not air and is not one of the replacement block types.
+                    int currentBlockType = GetBlockFromLocation(currentBlockPos);
+                    bool shouldWrap = (currentBlockType != AirID) && (!replaceBlockPattern.Contains(currentBlockType));
+                    if (shouldWrap)
                     {
-                        wrapBlocks = !replaceBlockPattern.Contains(GetBlockFromLocation(currentPosition));
-                    }
-
-                    if (wrapBlocks)
-                    {
-                        // Try wrapping the block in 7 possible adjacent positions.
-                        for (int direction = 0; direction < 7; direction++)
+                        // For each allowed direction, check the neighbor.
+                        foreach (var dir in directionsToApply)
                         {
-                            switch (direction)
+                            Vector3 neighborPos = currentBlockPos + dir.Value;
+                            if (GetBlockFromLocation(neighborPos) == AirID)
                             {
-                                case 0:
-                                    currentPosition = new Vector3(x, y, z);
-                                    break;
-                                case 1:
-                                    if (!excludeSurface)
-                                        currentPosition = new Vector3(x, y + 1f, z);
-                                    break;
-                                case 2:
-                                    currentPosition = new Vector3(x, y - 1f, z);
-                                    break;
-                                case 3:
-                                    currentPosition = new Vector3(x + 1f, y, z);
-                                    break;
-                                case 4:
-                                    currentPosition = new Vector3(x - 1f, y, z);
-                                    break;
-                                case 5:
-                                    currentPosition = new Vector3(x, y, z + 1f);
-                                    break;
-                                case 6:
-                                    currentPosition = new Vector3(x, y, z - 1f);
-                                    break;
-                            }
-
-                            // If the block is empty, wrap it with the new block type.
-                            if (GetBlockFromLocation(currentPosition) == AirID)
-                            {
-                                regionBlocks.Add(currentPosition);
+                                regionBlocks.Add(neighborPos);
                             }
                         }
                     }
                 }
             }
         }
-
         return regionBlocks;
     }
     #endregion
@@ -4243,8 +4346,6 @@ public class WorldEdit
 
     public static void ClearClipboard()
     {
-        UndoStack.Clear();
-        RedoStack.Clear();
         copiedRegion.Clear();
         copiedStackRegion.Clear();
     }
