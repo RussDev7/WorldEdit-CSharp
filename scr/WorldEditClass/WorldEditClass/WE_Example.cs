@@ -19,11 +19,13 @@ using System.Collections.Generic;
 using DNA.Drawing.UI.Controls;
 using System.Threading.Tasks;
 using DNA.CastleMinerZ.Net;
+using System.Globalization;
 using System.Windows.Forms;
 using System.Windows.Input;
 using System.Reflection;
 using System.Numerics;
 using System.Linq;
+using System.Text;
 using System.IO;
 using System;
 
@@ -184,8 +186,15 @@ namespace DNA.CastleMinerZ.UI
 
             // Selection Commands.
             ("pos [pos1/pos2..]",                                                      "Set positions."),
+            ("hpos [hpos1/hpos2..]",                                                   "Set position to targeted block."),
             ("wand [on/off]",                                                          "Get the wand item."),
+            ("contract [amount] (direction)",                                          "Contract the selection area."),
+            ("shift [amount] (direction)",                                             "Shift the selection area."),
+            ("trim [mask block(,array)]",                                              "Minimize the selection to encompass matching blocks."),
+            ("size (clipboard)",                                                       "Get information about the selection."),
             ("count [find block(,array)]",                                             "Counts the number of blocks matching a mask."),
+			("distr (clipboard) (page)",                                               "Get the distribution of blocks in the selection."),
+            ("expand [amount(vert)] (direction)",                                      "Expand the selection area."),
 
             // Region Commands.
             ("set [block(,array)] (hollow)",                                           "Sets all the blocks in the region."),
@@ -932,6 +941,40 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
+        #region /hpos
+
+        [Command("/hpos")]
+        private static void ExecuteHpos(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("ERROR: Command usage /hpos [hpos1/hpos2..]");
+                return;
+            }
+
+            try
+            {
+                int point = int.TryParse(args[0], out int p) ? p : 1;
+
+                // Check what position to set.
+                if (point == 1)
+                    _pointToLocation1 = GetUsersCursorLocation();
+                else if (point == 2)
+                    _pointToLocation2 = GetUsersCursorLocation();
+
+                // Ensure point is within range.
+                if (point == 1 || point == 2)
+                    Console.WriteLine($"Targeted position {point} ({(point == 1 ? $"{Math.Round(_pointToLocation1.X)}, {Math.Round(_pointToLocation1.Y)}, {Math.Round(_pointToLocation1.Z)}" : $"{Math.Round(_pointToLocation2.X)}, {Math.Round(_pointToLocation2.Y)}, {Math.Round(_pointToLocation2.Z)}")}) has been set!");
+                else
+                    Console.WriteLine($"Targeted position {point} is not valid!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
         #region /wand
 
         [Command("/wand")]
@@ -997,6 +1040,276 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
+        #region /contract
+        
+        [Command("/contract")]
+        private static void ExecuteContract(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("ERROR: Command usage /contract [amount] (direction)");
+                return;
+            }
+
+            try
+            {
+                if (!int.TryParse(args[0], out int amount) || amount < 0)
+                {
+                    Console.WriteLine("ERROR: [amount] must be a positive integer.");
+                    return;
+                }
+
+                // Parse optional direction (null ? all faces).
+                Direction? direction = null;
+                if (args.Length >= 2 &&
+                    !string.IsNullOrWhiteSpace(args[1]) &&
+                    !args[1].Equals("all", StringComparison.OrdinalIgnoreCase) && // allow  "all".
+                    Enum.TryParse(args[1], true, out Direction parsedDir))
+                {
+                    direction = parsedDir;
+                }
+
+                // Work with *min* and *max* so we don’t care which corner is pos1/pos2.
+                Vector3 min = Vector3.Min(_pointToLocation1, _pointToLocation2);
+                Vector3 max = Vector3.Max(_pointToLocation1, _pointToLocation2);
+
+                void shrink(ref float face, int by) => face -= by;
+                void grow  (ref float face, int by) => face += by;
+
+                if (direction is null) // contract from every face.
+                {
+                    grow  (ref min.X, amount); shrink(ref max.X, amount);
+                    grow  (ref min.Y, amount); shrink(ref max.Y, amount);
+                    grow  (ref min.Z, amount); shrink(ref max.Z, amount);
+                }
+                else                   // contract one face only.
+                {
+                    switch (direction.Value)
+                    {
+                        case Direction.posX: shrink(ref max.X, amount); break;
+                        case Direction.negX: grow  (ref min.X, amount); break;
+                        case Direction.Up:   shrink(ref max.Y, amount); break;
+                        case Direction.Down: grow  (ref min.Y, amount); break;
+                        case Direction.posZ: shrink(ref max.Z, amount); break;
+                        case Direction.negZ: grow  (ref min.Z, amount); break;
+                    }
+                }
+
+                // Validate that we still have a non-negative region.
+                if (min.X > max.X || min.Y > max.Y || min.Z > max.Z)
+                {
+                    Console.WriteLine("ERROR: Contract amount too large – selection would invert/vanish.");
+                    return;
+                }
+
+                // Ensure the expansion does not exceed world height limits.
+                // This should not be an issue for contracting.
+                ClampToWorldHeight(ref min.Y, ref max.Y);
+
+                // Persist the new selection back to the global points.
+                _pointToLocation1 = min;
+                _pointToLocation2 = max;
+
+                // Feedback.
+                string dirText = direction?.ToString() ?? "all faces";
+                Console.WriteLine(
+                    $"Contracted selection by {amount} block(s) on {dirText}.");
+                    // $"New region: ({Math.Round(min.X)}, {Math.Round(min.Y)}, {Math.Round(min.Z)}) -> " +
+                    // $"({Math.Round(max.X)}, {Math.Round(max.Y)}, {Math.Round(max.Z)}).");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region /shift
+
+        [Command("/shift")]
+        private static void ExecuteShift(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("ERROR: Command usage /shift [amount] (direction)");
+                return;
+            }
+
+            try
+            {
+                if (!int.TryParse(args[0], out int amount) || amount < 0)
+                {
+                    Console.WriteLine("ERROR: [amount] must be a positive integer.");
+                    return;
+                }
+
+                // Parse direction. Use facing direction as the default. 
+                Vector3 cursorLocation = GetUsersCursorLocation();
+                Direction dir = GetFacingDirection(_pointToLocation1, cursorLocation);
+                if (args.Length >= 2 &&
+                    !string.IsNullOrWhiteSpace(args[1]) &&
+                    Enum.TryParse(args[1], true, out Direction parsedDir))
+                {
+                    dir = parsedDir;
+                }
+
+                // Build the offset vector.
+                Vector3 offset = dir switch
+                {
+                    Direction.posX => new Vector3(+amount, 0, 0),
+                    Direction.negX => new Vector3(-amount, 0, 0),
+                    Direction.posZ => new Vector3(0, 0, +amount),
+                    Direction.negZ => new Vector3(0, 0, -amount),
+                    Direction.Up   => new Vector3(0, +amount, 0),
+                    Direction.Down => new Vector3(0, -amount, 0),
+                    _              => Vector3.Zero
+                };
+
+                // Compute new positions.
+                Vector3 newP1 = _pointToLocation1 + offset;
+                Vector3 newP2 = _pointToLocation2 + offset;
+
+                // Keep X & Z unlimited; clamp Y only.
+                newP1.Y = Clamp((int)newP1.Y, WorldHeights.Item1, WorldHeights.Item2);
+                newP2.Y = Clamp((int)newP2.Y, WorldHeights.Item1, WorldHeights.Item2);
+
+                // If clamp collapsed the region completely (i.e. it would lie outside).
+                if (newP1.Y == newP2.Y && _pointToLocation1.Y != _pointToLocation2.Y)
+                {
+                    Console.WriteLine("ERROR: Shift would move the selection outside world height limits.");
+                    return;
+                }
+
+                // Persist & report.
+                _pointToLocation1 = newP1;
+                _pointToLocation2 = newP2;
+
+                Console.WriteLine(
+                    $"Shifted selection {amount} block(s) toward {dir}.");
+                    // $"New region: ({Math.Round(newP1.X)}, {Math.Round(newP1.Y)}, {Math.Round(newP1.Z)}) -> " +
+                    // $"({Math.Round(newP2.X)}, {Math.Round(newP2.Y)}, {Math.Round(newP2.Z)}).");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region /trim
+
+        [Command("/trim")]
+        private static void ExecuteTrim(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("ERROR: Command usage /trim [mask block(,array)]");
+                return;
+            }
+
+            try
+            {
+                string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
+
+                // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
+                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
+
+                // Make sure the input is within the min/max.
+                int[] maskArray = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
+                if (maskArray.Length == 0 || maskArray.Min() < BlockIDValues.Item1 || maskArray.Max() > BlockIDValues.Item2)
+                {
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    return;
+                }
+
+                // Define location data and mask data.
+                Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
+                HashSet<int> maskSet = new HashSet<int>(maskArray);
+
+                // TrimRegion(Region region, HashSet<int> maskSet, out Vector3 outMin, out Vector3 outMax).
+                // Find bounding box of matching blocks.
+                if (!TrimRegion(definedRegion, maskSet, out Vector3 newMin, out Vector3 newMax))
+                {
+                    Console.WriteLine("No matching blocks found inside the current selection.");
+                    return;
+                }
+
+                // Clamp Y to world height limits just in case.
+                newMin.Y = Math.Max(newMin.Y, WorldHeights.Item1);
+                newMax.Y = Math.Min(newMax.Y, WorldHeights.Item2);
+
+                // Persist & feedback.
+                _pointToLocation1 = newMin;
+                _pointToLocation2 = newMax;
+
+                Console.WriteLine(
+                    $"Trimmed selection to matching blocks.");
+                    // $"New region: ({Math.Round(newMin.X)}, {Math.Round(newMin.Y)}, {Math.Round(newMin.Z)}) -> " +
+                    // $"({Math.Round(newMax.X)}, {Math.Round(newMax.Y)}, {Math.Round(newMax.Z)}).");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region /size
+
+        [Command("/size")]
+        private static void ExecuteSize(string[] args)
+        {
+            Vector3 min = Vector3.Zero, max = Vector3.Zero;
+            bool fromClipboard = args.Length >= 1 && args[0].Equals("clipboard", StringComparison.OrdinalIgnoreCase);
+
+            // If clipboard was requested and empty, display an error and return.
+            if (fromClipboard && (copiedRegion == null || copiedRegion.Count == 0))
+            {
+                Console.WriteLine("ERROR: The clipboard is empty. Try using /copy first.");
+                return;
+            }
+
+            // Decide which bounding box to use.
+            if (!(fromClipboard && GetBoundingBoxFromRegion(out min, out max)))
+            {
+                // Make sure both points have been set.
+                if (_pointToLocation1 == default || _pointToLocation2 == default)
+                {
+                    Console.WriteLine("ERROR: You must set /pos1 and /pos2 first.");
+                    return;
+                }
+
+                // Put the two corners into canonical order.
+                min = Vector3.Min(_pointToLocation1, _pointToLocation2);
+                max = Vector3.Max(_pointToLocation1, _pointToLocation2);
+            }
+
+            // Calculate dimensions (inclusive, so +1).
+            int sizeX = (int)(max.X - min.X) + 1;
+            int sizeY = (int)(max.Y - min.Y) + 1;
+            int sizeZ = (int)(max.Z - min.Z) + 1;
+
+            long volume = (long)sizeX * sizeY * sizeZ;
+
+            // Generate a neat summary. // C# 11+ can use raw string '"""'.
+            string report = new StringBuilder()
+                .AppendLine($"----------------------------------------------------")
+                .AppendLine(
+                    $"Selection corners : ({Math.Round(min.X)}, {Math.Round(min.Y)}, {Math.Round(min.Z)}) -> " +
+                    $"({Math.Round(max.X)}, {Math.Round(max.Y)}, {Math.Round(max.Z)})"
+                )
+                .AppendLine($"Width  (X)        : {sizeX} block{(sizeX == 1 ? "" : "s")}")
+                .AppendLine($"Height (Y)        : {sizeY} block{(sizeY == 1 ? "" : "s")}")
+                .AppendLine($"Length (Z)        : {sizeZ} block{(sizeZ == 1 ? "" : "s")}")
+                .AppendLine($"Total volume      : {volume:N0} block{(volume == 1 ? "" : "s")}")
+                .Append    ($"----------------------------------------------------")
+                .ToString();
+
+            // Display report.
+            Console.WriteLine(report);
+        }
+        #endregion
+
         #region /count
 
         [Command("/count")]
@@ -1016,23 +1329,24 @@ namespace DNA.CastleMinerZ.UI
                 blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
 
                 // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                int[] maskArray = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
+                if (maskArray.Length == 0 || maskArray.Min() < BlockIDValues.Item1 || maskArray.Max() > BlockIDValues.Item2)
                 {
                     Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
                     return;
                 }
 
-                // Define location data.
+                // Define location data and mask data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
+                HashSet<int> maskSet = new HashSet<int>(maskArray);
 
                 // Decide if air blocks (denoted by AirID) should be ignored.
                 // For example, if the input does NOT include AirID, then we ignore air in the region.
-                int ignoreBlock = (!blockPatternNumbers.Contains(AirID)) ? AirID : -1;
+                int ignoreBlock = (!maskSet.Contains(AirID)) ? AirID : -1;
 
-                // CountRegion(Region region, List<int> countBlocks, int ignoreBlock = -1).
-                // Pass the list of block IDs (converted from the array) to CountRegion, along with the ignore block.
-                var regionBlocks = CountRegion(definedRegion, blockPatternNumbers.ToList(), ignoreBlock);
+                // CountRegion(Region region, HashSet<int> maskSet, int ignoreBlock = -1).
+                // Pass the HashSet of block IDs (converted from the array) to CountRegion, along with the ignore block.
+                var regionBlocks = CountRegion(definedRegion, maskSet, ignoreBlock);
 
                 // Group the blocks by block type (Item2 in the tuple) and count them.
                 var blockCounts = regionBlocks
@@ -1050,6 +1364,213 @@ namespace DNA.CastleMinerZ.UI
                 }
                 else
                     Console.WriteLine($"{regionBlocks.Count} blocks found matching the criteria.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region /distr
+        
+        [Command("/distr")]
+        private static void ExecuteDistr(string[] args)
+        {
+            bool fromClipboard = false;
+            int  page          = 1;
+        
+            if (args.Length == 1)
+            {
+                if (args[0].Equals("clipboard", StringComparison.OrdinalIgnoreCase))
+                    fromClipboard = true;
+                else if (!int.TryParse(args[0], out page) || page < 1)
+                {
+                    Console.WriteLine("ERROR: Page must be a positive integer.");
+                    return;
+                }
+            }
+            else if (args.Length >= 2)
+            {
+                if (!args[0].Equals("clipboard", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine("ERROR: Command usage /distr (clipboard) (page)");
+                    return;
+                }
+                fromClipboard = true;
+        
+                if (!int.TryParse(args[1], out page) || page < 1)
+                {
+                    Console.WriteLine("ERROR: Page must be a positive integer.");
+                    return;
+                }
+            }
+        
+            // Get IDs: Clipboard or live selection.
+            IEnumerable<int> idStream;
+        
+            if (fromClipboard)
+            {
+                if (copiedRegion == null || copiedRegion.Count == 0)
+                {
+                    Console.WriteLine("ERROR: The clipboard is empty. Try using /copy first.");
+                    return;
+                }
+                idStream = copiedRegion.Select(t => t.Item2);
+            }
+            else
+            {
+                if (_pointToLocation1 == default || _pointToLocation2 == default)
+                {
+                    Console.WriteLine("ERROR: You must set /pos1 and /pos2 first.");
+                    return;
+                }
+        
+                Vector3 min = Vector3.Min(_pointToLocation1, _pointToLocation2);
+                Vector3 max = Vector3.Max(_pointToLocation1, _pointToLocation2);
+                idStream    = EnumerateIdsInRegion(min, max);
+            }
+        
+            // Count occurrences.
+            var counts = new Dictionary<int, long>();
+            long total = 0;
+        
+            foreach (int id in idStream)
+            {
+                counts[id] = counts.TryGetValue(id, out long c) ? c + 1 : 1;
+                total++;
+            }
+        
+            if (total == 0)
+            {
+                Console.WriteLine("Nothing to count: the chosen region is empty.");
+                return;
+            }
+        
+            // Paging.
+            const int rowsPerPage = 4;
+            int totalPages = (counts.Count + rowsPerPage - 1) / rowsPerPage;
+        
+            if (page > totalPages)
+            {
+                Console.WriteLine($"ERROR: Page {page} is out of range (max {totalPages}).");
+                return;
+            }
+        
+            var ordered = counts.OrderByDescending(p => p.Value)
+                                .Skip((page - 1) * rowsPerPage)
+                                .Take(rowsPerPage);
+        
+            // Build report.
+            var sb = new StringBuilder();
+            sb.AppendLine("----------------------------------------------------");
+            sb.AppendLine($"Block distribution ({total:N0} blocks total) | Page {page}/{totalPages}");
+            sb.AppendLine("ID / Name                   Count      Share");
+            sb.AppendLine("----------------------------------------------------");
+        
+            foreach (var pair in ordered)
+            {
+                int   id    = pair.Key;
+                long  count = pair.Value;
+                double pct  = (double)count / total;
+        
+                string name = Enum.IsDefined(typeof(DNA.CastleMinerZ.Terrain.BlockTypeEnum), id)
+                            ? Enum.GetName(typeof(DNA.CastleMinerZ.Terrain.BlockTypeEnum), id)
+                            : "Unknown";
+        
+                sb.AppendLine($"{id,3} {name,-18} {count,10:N0}    {pct,7:P2}");
+            }
+        
+            sb.Append("----------------------------------------------------");
+            Console.WriteLine(sb.ToString());
+        }
+        #endregion
+
+        #region /expand
+        
+        [Command("/expand")]
+        private static void ExecuteExpand(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("ERROR: Command usage /expand [amount(vert)] (direction)");
+                return;
+            }
+        
+            try
+            {
+                // Check for the vertical keyword. If so, only vertically expand the selection to world limits.
+                if (args[0].Equals("vert", StringComparison.OrdinalIgnoreCase))
+                {
+                    Vector3 minVert = Vector3.Min(_pointToLocation1, _pointToLocation2);
+                    Vector3 maxVert = Vector3.Max(_pointToLocation1, _pointToLocation2);
+            
+                    minVert.Y = WorldHeights.Item1;
+                    maxVert.Y = WorldHeights.Item2;
+            
+                    _pointToLocation1 = minVert;
+                    _pointToLocation2 = maxVert;
+            
+                    Console.WriteLine(
+                        $"Expanded selection vertically to world limits ({WorldHeights.Item1} ? {WorldHeights.Item2}).");
+                    return;
+                }
+    
+                if (!int.TryParse(args[0], out int amount) || amount < 0)
+                {
+                    Console.WriteLine("ERROR: [amount] must be a positive integer.");
+                    return;
+                }
+
+                // Parse optional direction (null ? all faces).
+                Direction? direction = null;
+                if (args.Length >= 2 &&
+                    !string.IsNullOrWhiteSpace(args[1]) &&
+                    !args[1].Equals("all", StringComparison.OrdinalIgnoreCase) &&
+                    Enum.TryParse(args[1], true, out Direction parsedDir))
+                {
+                    direction = parsedDir;
+                }
+
+                // Work with *min* and *max* so we don’t care which corner was set first.
+                Vector3 min = Vector3.Min(_pointToLocation1, _pointToLocation2);
+                Vector3 max = Vector3.Max(_pointToLocation1, _pointToLocation2);
+
+                void growMin (ref float face, int by) => face -= by;
+                void growMax (ref float face, int by) => face += by;
+
+                if (direction is null) // expand every face.
+                {
+                    growMin(ref min.X, amount); growMax(ref max.X, amount);
+                    growMin(ref min.Y, amount); growMax(ref max.Y, amount);
+                    growMin(ref min.Z, amount); growMax(ref max.Z, amount);
+                }
+                else                   // expand one face only.
+                {
+                    switch (direction.Value)
+                    {
+                        case Direction.posX: growMax(ref max.X, amount); break;
+                        case Direction.negX: growMin(ref min.X, amount); break;
+                        case Direction.Up:   growMax(ref max.Y, amount); break;
+                        case Direction.Down: growMin(ref min.Y, amount); break;
+                        case Direction.posZ: growMax(ref max.Z, amount); break;
+                        case Direction.negZ: growMin(ref min.Z, amount); break;
+                    }
+                }
+
+                // Ensure the expansion does not exceed world height limits.
+                ClampToWorldHeight(ref min.Y, ref max.Y);
+
+                // Persist the new selection back to the global points.
+                _pointToLocation1 = min;
+                _pointToLocation2 = max;
+
+                // Feedback.
+                string dirText = direction?.ToString() ?? "all faces";
+                Console.WriteLine(
+                    $"Expanded selection by {amount} block(s) on {dirText}.");
+                    // $"New region: ({Math.Round(min.X)}, {Math.Round(min.Y)}, {Math.Round(min.Z)}) -> " +
+                    // $"({Math.Round(max.X)}, {Math.Round(max.Y)}, {Math.Round(max.Z)}).");
             }
             catch (Exception ex)
             {

@@ -351,6 +351,26 @@ public class WorldEdit
             return vector3HashSet;
         }
 
+        public static bool GetBoundingBoxFromRegion(out Vector3 min, out Vector3 max)
+        {
+            min = default;
+            max = default;
+
+            if (copiedRegion == null || copiedRegion.Count == 0)
+                return false;
+
+            min = new Vector3(float.MaxValue);
+            max = new Vector3(float.MinValue);
+
+            foreach (var entry in copiedRegion)
+            {
+                Vector3 p = entry.Item1;
+                min = Vector3.Min(min, p);
+                max = Vector3.Max(max, p);
+            }
+            return true;
+        }
+
         // Check if the direction is valid.
         public static bool IsValidDirection(string direction)
         {
@@ -441,6 +461,13 @@ public class WorldEdit
         public static int Clamp(int value, int min, int max)
         {
             return (value < min) ? min : (value > max) ? max : value;
+        }
+
+        // Clamps yMin / yMax so the region stays within WorldHeights.
+        public static void ClampToWorldHeight(ref float yMin, ref float yMax)
+        {
+            yMin = Math.Max(yMin, WorldHeights.Item1);
+            yMax = Math.Min(yMax, WorldHeights.Item2);
         }
 
         public static Vector3 RoundVector(Vector3 v)
@@ -1273,14 +1300,56 @@ public class WorldEdit
 
     /// <summary>
     /// 
+    /// 'Trim'
     /// 'Count'
-    /// 
+    /// 'Distr'
+    ///
     /// </summary>
     #region Selection Methods
 
+    #region Trim
+    public static bool TrimRegion(Region region, HashSet<int> maskSet, out Vector3 outMin, out Vector3 outMax)
+    {
+        // Prepare current region (min / max no matter which corner was pos1).
+        Vector3 selMin = Vector3.Min(region.Position1, region.Position2);
+        Vector3 selMax = Vector3.Max(region.Position1, region.Position2);
+
+        bool found = false;
+        outMin = new Vector3(float.MaxValue);
+        outMax = new Vector3(float.MinValue);
+
+        for (int x = (int)selMin.X; x <= selMax.X; x++)
+        {
+            for (int y = (int)selMin.Y; y <= selMax.Y; y++)
+            {
+                for (int z = (int)selMin.Z; z <= selMax.Z; z++)
+                {
+                    Vector3 p = new Vector3(x, y, z);
+
+                    int id = GetBlockFromLocation(p);
+                    if (!maskSet.Contains(id)) continue;
+
+                    if (!found)
+                    {
+                        outMin = outMax = p;
+                        found  = true;
+                    }
+                    else
+                    {
+                        outMin = Vector3.Min(outMin, p);
+                        outMax = Vector3.Max(outMax, p);
+                    }
+                }
+            }
+        }
+
+        return found;
+    }
+    #endregion
+
     #region Count
 
-    public static HashSet<Tuple<Vector3, int>> CountRegion(Region region, List<int> countBlocks, int ignoreBlock = -1)
+    public static HashSet<Tuple<Vector3, int>> CountRegion(Region region, HashSet<int> maskSet, int ignoreBlock = -1)
     {
         HashSet<Tuple<Vector3, int>> regionBlocks = new HashSet<Tuple<Vector3, int>>();
 
@@ -1300,13 +1369,25 @@ public class WorldEdit
                     // If ignore block was specified, skip locations matching the block id.
                     if (ignoreBlock != -1 && blockType == ignoreBlock) continue;
 
-                    if (countBlocks.Contains(blockType))
+                    if (maskSet.Contains(blockType))
                         regionBlocks.Add(new Tuple<Vector3, int>(newPos, blockType));
                 }
             }
         }
 
         return regionBlocks;
+    }
+    #endregion
+
+    #region Distr
+
+    // Helper function.
+    public static IEnumerable<int> EnumerateIdsInRegion(Vector3 min, Vector3 max)
+    {
+        for (int x = (int)min.X; x <= max.X; x++)
+            for (int y = (int)min.Y; y <= max.Y; y++)
+                for (int z = (int)min.Z; z <= max.Z; z++)
+                    yield return GetBlockFromLocation(new Vector3(x, y, z));
     }
     #endregion
 
