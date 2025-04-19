@@ -42,6 +42,7 @@ public class WorldEdit
     /// 
     /// 'WorldHeights'
     /// 'BlockIDValues'
+    /// 'ChunkSize'
     /// 'AirID'
     /// 'LogID'
     /// 'LeavesID'
@@ -62,7 +63,7 @@ public class WorldEdit
     /// 
     /// </summary>
 
-    // You need to implement 'WorldHeights', 'BlockIDValues', 'AirID', 'LogID', 'LeavesID', and 'WandItemID' support manually!
+    // You need to implement 'WorldHeights', 'BlockIDValues', 'ChunkSize', 'AirID', 'LogID', 'LeavesID', and 'WandItemID' support manually!
     #region Class Definitions
 
     /// <summary>
@@ -71,8 +72,9 @@ public class WorldEdit
     /// 
     /// </summary>
 
-    public static Tuple<int, int> WorldHeights = new Tuple<int, int>(-64, 64); // Bottom -> Top.
-    public static Tuple<int, int> BlockIDValues = new Tuple<int, int>(0, 93);  // Min    -> Max.
+    public static (int MinY,   int MaxY)    WorldHeights  = (-64, 64);
+    public static (int MinID,  int MaxID)   BlockIDValues = (0, 93);
+    public static (int WidthX, int LengthZ) ChunkSize     = (24, 24);
     public static int AirID = 0;
     public static int LogID = 17;
     public static int LeavesID = 18;
@@ -468,6 +470,41 @@ public class WorldEdit
         {
             yMin = Math.Max(yMin, WorldHeights.Item1);
             yMax = Math.Min(yMax, WorldHeights.Item2);
+        }
+
+        // Parses "x,z" or "x,y,z" into a Vector3 (ints). Returns false if malformed.
+        public static bool TryParseXYZ(string s, out Vector3 v)
+        {
+            int x = 0, y = 0, z = 0;
+            v = default;
+            var parts = s.Split(',');
+            if (parts.Length == 2)
+            {
+                if (int.TryParse(parts[0], out x) &&
+                    int.TryParse(parts[1], out z))
+                {
+                    v = new Vector3(x, 0, z);    // Y ignored
+                    return true;
+                }
+            }
+            else if (parts.Length == 3)
+            {
+                if (int.TryParse(parts[0], out x) &&
+                    int.TryParse(parts[1], out y) &&
+                    int.TryParse(parts[2], out z))
+                {
+                    v = new Vector3(x, y, z);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Mathematical floor division that works for negatives.
+        public static int FloorDiv(int value, int divisor)
+        {
+            return (value >= 0) ? value / divisor
+                                : -(((-value) + divisor - 1) / divisor);
         }
 
         public static Vector3 RoundVector(Vector3 v)

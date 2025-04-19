@@ -187,13 +187,14 @@ namespace DNA.CastleMinerZ.UI
             // Selection Commands.
             ("pos [pos1/pos2..]",                                                      "Set positions."),
             ("hpos [hpos1/hpos2..]",                                                   "Set position to targeted block."),
+            ("chunk (coordinates)",                                                    "Set the selection to your current chunk."),
             ("wand [on/off]",                                                          "Get the wand item."),
             ("contract [amount] (direction)",                                          "Contract the selection area."),
             ("shift [amount] (direction)",                                             "Shift the selection area."),
             ("trim [mask block(,array)]",                                              "Minimize the selection to encompass matching blocks."),
             ("size (clipboard)",                                                       "Get information about the selection."),
             ("count [find block(,array)]",                                             "Counts the number of blocks matching a mask."),
-			("distr (clipboard) (page)",                                               "Get the distribution of blocks in the selection."),
+            ("distr (clipboard) (page)",                                               "Get the distribution of blocks in the selection."),
             ("expand [amount(vert)] (direction)",                                      "Expand the selection area."),
 
             // Region Commands.
@@ -972,6 +973,45 @@ namespace DNA.CastleMinerZ.UI
             {
                 Console.WriteLine($"ERROR: {ex.Message}");
             }
+        }
+        #endregion
+
+        #region /chunk
+
+        [Command("/chunk")]
+        private static void ExecuteChunk(string[] args)
+        {
+            // Decide which point to center on.
+            Vector3 chunkLoc = Vector3.Zero;
+            bool useArg = args.Length == 1 && TryParseXYZ(args[0], out chunkLoc);
+
+            // If no chunk location was specified or valid, fall back to the users location.
+            if (!useArg)
+                chunkLoc = GetUsersLocation();
+
+            // Compute chunk indices using mathematical floor.
+            int sizeX = ChunkSize.Item1;
+            int sizeZ = ChunkSize.Item2;
+
+            int chunkX = FloorDiv((int)Math.Floor(chunkLoc.X), sizeX);
+            int chunkZ = FloorDiv((int)Math.Floor(chunkLoc.Z), sizeZ);
+
+            // Corner of the chunk (lower X/Z).
+            int minX = chunkX * sizeX;
+            int minZ = chunkZ * sizeZ;
+
+            // Opposite corner (inclusive).
+            int maxX = minX + sizeX - 1;
+            int maxZ = minZ + sizeZ - 1;
+
+            // Update selection – full vertical column.
+            _pointToLocation1 = new Vector3(minX, WorldHeights.Item1, minZ);
+            _pointToLocation2 = new Vector3(maxX, WorldHeights.Item2, maxZ);
+
+            // Feedback.
+            Console.WriteLine(
+                $"Chunk selected at X:{chunkX} Z:{chunkZ}  " +
+                $"({minX},{WorldHeights.Item1},{minZ}) -> ({maxX},{WorldHeights.Item2},{maxZ})");
         }
         #endregion
 
