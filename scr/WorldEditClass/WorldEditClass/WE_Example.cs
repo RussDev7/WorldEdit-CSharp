@@ -43,9 +43,6 @@ namespace DNA.CastleMinerZ.UI
     {
         #region Variables
 
-        private static Vector3 _pointToLocation1;
-        private static Vector3 _pointToLocation2;
-
         private bool _wandEnabled;
         private bool _toolEnabled;
         private bool _brushEnabled;
@@ -411,6 +408,59 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         // General Commands.
+
+        #region /cui
+
+        [Command("/cui")]
+        private static void ExecuteCUI(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("ERROR: Command usage /cui [on/off]");
+                return;
+            }
+
+            try
+            {
+                switch (args[0].ToLower())
+                {
+                    case "on":
+                        if (args.Length > 0 && args.Length < 2) // Valid: 0+; 1-2.
+                        {
+                            _enableCLU = true;
+                            Console.WriteLine("Selections are now shown.");
+                        }
+                        else
+                        {
+                            Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]");
+                            return;
+                        }
+                        break;
+
+                    case "off":
+                        if (args.Length > 0 && args.Length < 2) // Valid: 0+; 1-2.
+                        {
+                            _enableCLU = false;
+                            Console.WriteLine("Selections are now hidden.");
+                        }
+                        else
+                        {
+                            Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]");
+                            return;
+                        }
+                        break;
+
+                    default:
+                        Console.WriteLine("ERROR: Command usage /cui [on/off]");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
 
         #region /help
 

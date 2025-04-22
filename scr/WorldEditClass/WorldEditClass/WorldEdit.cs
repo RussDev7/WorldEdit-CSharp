@@ -68,20 +68,29 @@ public class WorldEdit
 
     /// <summary>
     /// 
+    /// This is a placeholder variable for the WorldEditCUI addon.
+    /// If you do not plan on using this addon, this can be removed.
+    /// 
+    /// </summary>
+    public static bool _enableCLU = false;
+
+    /// <summary>
+    /// 
     /// You need to implement these values for your project!
     /// 
     /// </summary>
-
     public static (int MinY,   int MaxY)    WorldHeights  = (-64, 64);
     public static (int MinID,  int MaxID)   BlockIDValues = (0, 93);
     public static (int WidthX, int LengthZ) ChunkSize     = (24, 24);
-    public static int AirID = 0;
-    public static int LogID = 17;
-    public static int LeavesID = 18;
     public static int WandItemID = 39;
-    ///
+    public static int LeavesID = 18;
+    public static int LogID = 17;
+    public static int AirID = 0;
 
     #region Definitions
+
+    // Define the main point1 and point2 location vectors. This is used to track the users initial set positions.
+    public static Vector3 _pointToLocation1, _pointToLocation2;
 
     // Define the main hashsets and their stacks. // Hashsets increase speed and removes unnecessary duplicates.
     // The undo and redo stacks use a third integer that's used as a guid to prevent removing duplicate regions.
