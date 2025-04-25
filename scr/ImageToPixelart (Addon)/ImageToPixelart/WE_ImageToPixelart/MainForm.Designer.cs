@@ -890,12 +890,22 @@
             // SigmaEquals
             // 
             this.SigmaEquals.DecimalPlaces = 1;
+            this.SigmaEquals.Increment = new decimal(new int[] {
+            1,
+            0,
+            0,
+            65536});
             this.SigmaEquals.Location = new System.Drawing.Point(95, 129);
             this.SigmaEquals.Maximum = new decimal(new int[] {
             1000,
             0,
             0,
             0});
+            this.SigmaEquals.Minimum = new decimal(new int[] {
+            1,
+            0,
+            0,
+            65536});
             this.SigmaEquals.Name = "SigmaEquals";
             this.SigmaEquals.Size = new System.Drawing.Size(50, 17);
             this.SigmaEquals.TabIndex = 30;
@@ -910,6 +920,11 @@
             this.AEquals.Location = new System.Drawing.Point(95, 71);
             this.AEquals.Maximum = new decimal(new int[] {
             1000,
+            0,
+            0,
+            0});
+            this.AEquals.Minimum = new decimal(new int[] {
+            1,
             0,
             0,
             0});
