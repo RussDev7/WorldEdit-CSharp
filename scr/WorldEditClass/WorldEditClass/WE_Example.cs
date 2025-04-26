@@ -210,7 +210,6 @@ namespace DNA.CastleMinerZ.UI
             ("fill [block(,array)]",                                                   "Fills only the inner-most blocks of an object contained in this selection."),
             ("wrap [replace block(,array)] (wrap direction(all)) (exclude direction)", "Fills only the outer-most air blocks of an object contained in this selection."),
             ("matrix [radius] [spacing] (snow) (default(,array))",                     "Places your clipboard spaced out in intervals."),
-            ("snow [block(,array)] [radius]",                                          "Places a pattern of blocks on ground level around position 1."),
             ("forest [area_size] [density] (max_height)",                              "Make a forest within the region."),
             ("tree (max_height)",                                                      "Make a tree at position 1."),
 
@@ -232,7 +231,7 @@ namespace DNA.CastleMinerZ.UI
             ("schematic [load] (loadAir)",                                             "Load a schematic into your clipboard."),
             ("copy",                                                                   "Copy the selection to the clipboard."),
             ("cut",                                                                    "Cut the selection to the clipboard."),
-            ("paste (useAir)",                                                         "Paste the clipboard’s contents."),
+            ("paste (useAir) (pos1)",                                                  "Paste the clipboard’s contents."),
             ("rotate (rotateY) (rotateX) (rotateZ)",                                   "Rotate the contents of the clipboard."),
             ("flip (direction)",                                                       "Flip the contents of the clipboard across the origin."),
             ("clearclipboard",                                                         "Clear your clipboard."),
@@ -252,8 +251,9 @@ namespace DNA.CastleMinerZ.UI
                      "brush rapid [true/false]",                                           "Brushing commands."),
 
             // Utility Commands.
-            ("removenear [radii]",                                                     "Remove all blocks within a cylindrical radii."),
-            ("replacenear [radii] [source block,(all)] [to block,(all)]",              "Replace all blocks within a cylindrical radii with another.")
+            ("removenear [radii] (pos1)",                                              "Remove all blocks within a cylindrical radii."),
+            ("replacenear [radii] [source block,(all)] [to block,(all)] (pos1)",       "Replace all blocks within a cylindrical radii with another."),
+            ("snow [block(,array)] [radius] (pos1)",                                   "Places a pattern of blocks on ground level.")
         };
         #endregion
 
@@ -898,7 +898,7 @@ namespace DNA.CastleMinerZ.UI
                 upwardsLocation.Y += amount;
 
                 // Ensure the position is within the bounds of the world.
-                if (upwardsLocation.Y <= WorldHeights.Item2)
+                if (upwardsLocation.Y <= WorldHeights.MaxY)
                 {
                     PlaceBlock(upwardsLocation, 48);      // GlassMystery.
                     await Task.Delay(100);                // Add short wait.
@@ -908,7 +908,7 @@ namespace DNA.CastleMinerZ.UI
                     Console.WriteLine($"Teleported up '{amount}' blocks!");
                 }
                 else
-                    Console.WriteLine($"Location 'Y:{Math.Round(upwardsLocation.Y)}' is out of bounds. Max: '{WorldHeights.Item2}'.");
+                    Console.WriteLine($"Location 'Y:{Math.Round(upwardsLocation.Y)}' is out of bounds. Max: '{WorldHeights.MaxY}'.");
             }
             catch (Exception ex)
             {
@@ -937,7 +937,7 @@ namespace DNA.CastleMinerZ.UI
                 upwardsLocation.Y -= amount;
 
                 // Ensure the position is within the bounds of the world.
-                if (upwardsLocation.Y >= WorldHeights.Item1)
+                if (upwardsLocation.Y >= WorldHeights.MinY)
                 {
                     PlaceBlock(upwardsLocation, 48);      // GlassMystery.
                     await Task.Delay(100);                // Add short wait.
@@ -947,7 +947,7 @@ namespace DNA.CastleMinerZ.UI
                     Console.WriteLine($"Teleported down '{amount}' blocks!");
                 }
                 else
-                    Console.WriteLine($"Location 'Y:{Math.Round(upwardsLocation.Y)}' is out of bounds. Max: '{WorldHeights.Item1}'.");
+                    Console.WriteLine($"Location 'Y:{Math.Round(upwardsLocation.Y)}' is out of bounds. Max: '{WorldHeights.MinY}'.");
             }
             catch (Exception ex)
             {
@@ -1040,8 +1040,8 @@ namespace DNA.CastleMinerZ.UI
                 chunkLoc = GetUsersLocation();
 
             // Compute chunk indices using mathematical floor.
-            int sizeX = ChunkSize.Item1;
-            int sizeZ = ChunkSize.Item2;
+            int sizeX = ChunkSize.WidthX;
+            int sizeZ = ChunkSize.LengthZ;
 
             int chunkX = FloorDiv((int)Math.Floor(chunkLoc.X), sizeX);
             int chunkZ = FloorDiv((int)Math.Floor(chunkLoc.Z), sizeZ);
@@ -1055,13 +1055,13 @@ namespace DNA.CastleMinerZ.UI
             int maxZ = minZ + sizeZ - 1;
 
             // Update selection – full vertical column.
-            _pointToLocation1 = new Vector3(minX, WorldHeights.Item1, minZ);
-            _pointToLocation2 = new Vector3(maxX, WorldHeights.Item2, maxZ);
+            _pointToLocation1 = new Vector3(minX, WorldHeights.MinY, minZ);
+            _pointToLocation2 = new Vector3(maxX, WorldHeights.MaxY, maxZ);
 
             // Feedback.
             Console.WriteLine(
                 $"Chunk selected at X:{chunkX} Z:{chunkZ}  " +
-                $"({minX},{WorldHeights.Item1},{minZ}) -> ({maxX},{WorldHeights.Item2},{maxZ})");
+                $"({minX},{WorldHeights.MinY},{minZ}) -> ({maxX},{WorldHeights.MaxY},{maxZ})");
         }
         #endregion
 
@@ -1244,6 +1244,34 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Build the offset vector.
+                Vector3 offset;
+                switch (dir)
+                {
+                    case Direction.posX:
+                        offset = new Vector3(+amount, 0, 0);
+                        break;
+                    case Direction.negX:
+                        offset = new Vector3(-amount, 0, 0);
+                        break;
+                    case Direction.posZ:
+                        offset = new Vector3(0, 0, +amount);
+                        break;
+                    case Direction.negZ:
+                        offset = new Vector3(0, 0, -amount);
+                        break;
+                    case Direction.Up:
+                        offset = new Vector3(0, +amount, 0);
+                        break;
+                    case Direction.Down:
+                        offset = new Vector3(0, -amount, 0);
+                        break;
+                    default:
+                        offset = Vector3.Zero;
+                        break;
+                }
+
+                // C# 8.0+.
+                /*
                 Vector3 offset = dir switch
                 {
                     Direction.posX => new Vector3(+amount, 0, 0),
@@ -1254,14 +1282,15 @@ namespace DNA.CastleMinerZ.UI
                     Direction.Down => new Vector3(0, -amount, 0),
                     _              => Vector3.Zero
                 };
+                */
 
                 // Compute new positions.
                 Vector3 newP1 = _pointToLocation1 + offset;
                 Vector3 newP2 = _pointToLocation2 + offset;
 
                 // Keep X & Z unlimited; clamp Y only.
-                newP1.Y = Clamp((int)newP1.Y, WorldHeights.Item1, WorldHeights.Item2);
-                newP2.Y = Clamp((int)newP2.Y, WorldHeights.Item1, WorldHeights.Item2);
+                newP1.Y = Clamp((int)newP1.Y, WorldHeights.MinY, WorldHeights.MaxY);
+                newP2.Y = Clamp((int)newP2.Y, WorldHeights.MinY, WorldHeights.MaxY);
 
                 // If clamp collapsed the region completely (i.e. it would lie outside).
                 if (newP1.Y == newP2.Y && _pointToLocation1.Y != _pointToLocation2.Y)
@@ -1306,9 +1335,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] maskArray = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (maskArray.Length == 0 || maskArray.Min() < BlockIDValues.Item1 || maskArray.Max() > BlockIDValues.Item2)
+                if (maskArray.Length == 0 || maskArray.Min() < BlockIDValues.MinID || maskArray.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -1325,8 +1354,8 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Clamp Y to world height limits just in case.
-                newMin.Y = Math.Max(newMin.Y, WorldHeights.Item1);
-                newMax.Y = Math.Min(newMax.Y, WorldHeights.Item2);
+                newMin.Y = Math.Max(newMin.Y, WorldHeights.MinY);
+                newMax.Y = Math.Min(newMax.Y, WorldHeights.MaxY);
 
                 // Persist & feedback.
                 _pointToLocation1 = newMin;
@@ -1349,7 +1378,6 @@ namespace DNA.CastleMinerZ.UI
         [Command("/size")]
         private static void ExecuteSize(string[] args)
         {
-            Vector3 min = Vector3.Zero, max = Vector3.Zero;
             bool fromClipboard = args.Length >= 1 && args[0].Equals("clipboard", StringComparison.OrdinalIgnoreCase);
 
             // If clipboard was requested and empty, display an error and return.
@@ -1360,7 +1388,7 @@ namespace DNA.CastleMinerZ.UI
             }
 
             // Decide which bounding box to use.
-            if (!(fromClipboard && GetBoundingBoxFromRegion(out min, out max)))
+            if (!(fromClipboard && GetBoundingBoxFromRegion(out Vector3 min, out Vector3 max)))
             {
                 // Make sure both points have been set.
                 if (_pointToLocation1 == default || _pointToLocation2 == default)
@@ -1420,9 +1448,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] maskArray = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (maskArray.Length == 0 || maskArray.Min() < BlockIDValues.Item1 || maskArray.Max() > BlockIDValues.Item2)
+                if (maskArray.Length == 0 || maskArray.Min() < BlockIDValues.MinID || maskArray.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -1595,14 +1623,14 @@ namespace DNA.CastleMinerZ.UI
                     Vector3 minVert = Vector3.Min(_pointToLocation1, _pointToLocation2);
                     Vector3 maxVert = Vector3.Max(_pointToLocation1, _pointToLocation2);
             
-                    minVert.Y = WorldHeights.Item1;
-                    maxVert.Y = WorldHeights.Item2;
+                    minVert.Y = WorldHeights.MinY;
+                    maxVert.Y = WorldHeights.MaxY;
             
                     _pointToLocation1 = minVert;
                     _pointToLocation2 = maxVert;
             
                     Console.WriteLine(
-                        $"Expanded selection vertically to world limits ({WorldHeights.Item1} ? {WorldHeights.Item2}).");
+                        $"Expanded selection vertically to world limits ({WorldHeights.MinY} ? {WorldHeights.MaxY}).");
                     return;
                 }
     
@@ -1692,9 +1720,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -1723,18 +1751,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -1771,9 +1799,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -1788,18 +1816,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -1839,15 +1867,15 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] searchPatternNumbers = (searchPattern == "all") ? new int[1] : (!string.IsNullOrEmpty(searchPattern)) ? searchPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (searchPatternNumbers.Length == 0 || searchPatternNumbers.Min() < BlockIDValues.Item1 || searchPatternNumbers.Max() > BlockIDValues.Item2)
+                if (searchPatternNumbers.Length == 0 || searchPatternNumbers.Min() < BlockIDValues.MinID || searchPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
                 int[] replacePatternNumbers = (replacePattern == "all") ? new int[1] : (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -1866,10 +1894,10 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get the current block type.
-                    int currentBlock = GetBlockFromLocation(i);
+                    int currentBlock = GetBlockFromLocation(blockLocation);
 
                     // Check if the current block is a block to replace.
                     if ((searchPattern == "all" && currentBlock != AirID) || currentBlock.ToString() == searchPattern) // Make sure not to replace 'air' when using 'all' mode.
@@ -1879,12 +1907,12 @@ namespace DNA.CastleMinerZ.UI
                         int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePattern);
 
                         // Place block if it doesn't already exist. (improves the performance).
-                        if (GetBlockFromLocation(i) != replaceBlock)
+                        if (GetBlockFromLocation(blockLocation) != replaceBlock)
                         {
-                            PlaceBlock(i, replaceBlock);
+                            PlaceBlock(blockLocation, replaceBlock);
 
                             // Add block to redo.
-                            redoBuilder.Add(new Tuple<Vector3, int>(i, replaceBlock));
+                            redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, replaceBlock));
                         }
                     }
                 }
@@ -1924,15 +1952,15 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] exceptPatternNumbers = (!string.IsNullOrEmpty(exceptPattern)) ? exceptPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (exceptPatternNumbers.Length == 0 || exceptPatternNumbers.Min() < BlockIDValues.Item1 || exceptPatternNumbers.Max() > BlockIDValues.Item2)
+                if (exceptPatternNumbers.Length == 0 || exceptPatternNumbers.Min() < BlockIDValues.MinID || exceptPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
                 int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -1948,10 +1976,10 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get the current block type.
-                    int currentBlock = GetBlockFromLocation(i);
+                    int currentBlock = GetBlockFromLocation(blockLocation);
 
                     // Convert string to a list of integers.
                     var excludedBlocks = exceptPattern.Split(',').Select(int.Parse).ToList();
@@ -1963,12 +1991,12 @@ namespace DNA.CastleMinerZ.UI
                         int replaceBlock = GetRandomBlockFromPattern(replacePattern);
 
                         // Place block if it doesn't already exist. (improves the performance).
-                        if (GetBlockFromLocation(i) != replaceBlock)
+                        if (GetBlockFromLocation(blockLocation) != replaceBlock)
                         {
-                            PlaceBlock(i, replaceBlock);
+                            PlaceBlock(blockLocation, replaceBlock);
 
                             // Add block to redo.
-                            redoBuilder.Add(new Tuple<Vector3, int>(i, replaceBlock));
+                            redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, replaceBlock));
                         }
                     }
                 }
@@ -2005,9 +2033,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -2023,18 +2051,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(replacePattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -2070,9 +2098,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -2087,18 +2115,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -2476,9 +2504,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -2490,18 +2518,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -2532,9 +2560,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -2550,18 +2578,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(replacePattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -2597,9 +2625,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -2615,18 +2643,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(replacePattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -2687,9 +2715,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -2705,18 +2733,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(replacePattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -2762,9 +2790,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] optionalBlockPatternNumbers = (!string.IsNullOrEmpty(optionalBlockPattern)) ? optionalBlockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (optionalBlockPatternNumbers.Length == 0 || optionalBlockPatternNumbers.Min() < BlockIDValues.Item1 || optionalBlockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (optionalBlockPatternNumbers.Length == 0 || optionalBlockPatternNumbers.Min() < BlockIDValues.MinID || optionalBlockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -2777,12 +2805,8 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (var i in region)
+                foreach (var (blockLocation, block) in region)
                 {
-                    // Get location of block and block ID.
-                    Vector3 blockLocation = i.Item1;
-                    int block = i.Item2;
-
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
@@ -2797,69 +2821,6 @@ namespace DNA.CastleMinerZ.UI
                 SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"ERROR: {ex.Message}");
-            }
-        }
-        #endregion
-
-        #region /snow
-
-        [Command("/snow")]
-        private static void ExecuteSnow(string[] args)
-        {
-            if (args.Length < 2)
-            {
-                Console.WriteLine("ERROR: Command usage /snow [block(,array)] [radius]");
-                return;
-            }
-
-            try
-            {
-                string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
-                int radius = int.TryParse(args[1], out int r) ? r : 10;
-
-                // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
-                    return;
-                }
-
-                // MakeSnow(Vector3 center, int radius).
-                var region = MakeSnow(_pointToLocation1, radius);
-
-                // Save the existing region and clear the upcoming redo.
-                // Extract and save only the vector locations for the initial save.
-                SaveUndo(region);
-                ClearRedo();
-
-                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
-                {
-                    // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
-
-                    // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
-                    {
-                        PlaceBlock(i, block);
-
-                        // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
-                    }
-                }
-
-                // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
-
-                Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
@@ -2897,12 +2858,8 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (var i in region)
+                foreach (var (blockLocation, block) in region)
                 {
-                    // Get location of block and block ID.
-                    Vector3 blockLocation = i.Item1;
-                    int block = i.Item2;
-
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
@@ -2943,12 +2900,8 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (var i in region)
+                foreach (var (blockLocation, block) in region)
                 {
-                    // Get location of block and block ID.
-                    Vector3 blockLocation = i.Item1;
-                    int block = i.Item2;
-
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
@@ -2995,9 +2948,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -3009,18 +2962,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -3058,9 +3011,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -3072,18 +3025,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -3123,9 +3076,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -3137,18 +3090,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -3187,9 +3140,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -3201,18 +3154,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -3250,9 +3203,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -3264,18 +3217,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -3314,9 +3267,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -3328,18 +3281,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -3379,9 +3332,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -3393,18 +3346,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -3443,9 +3396,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -3457,18 +3410,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -3506,9 +3459,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -3520,18 +3473,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -3570,9 +3523,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -3586,18 +3539,18 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(i) != block)
+                    if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(i, block);
+                        PlaceBlock(blockLocation, block);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
@@ -3662,9 +3615,9 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
@@ -3680,25 +3633,22 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (var i in region)
+                foreach (var (blockLocation, block) in region)
                 {
-                    // Get location of block and block ID.
-                    Vector3 blockLocation = i.Item1;
-                    int block = i.Item2;
-
                     // Check if output is -1, use random block from input.
+                    int blockToUse = block;
                     if (block == -1)
-                        block = GetRandomBlockFromPattern(blockPattern);
+                        blockToUse = GetRandomBlockFromPattern(blockPattern);
                     else
-                        if (block < BlockIDValues.Item1 || block > BlockIDValues.Item2) // Ensure the returning value is valid.
-                            block = GetRandomBlockFromPattern(blockPattern);
+                        if (blockToUse < BlockIDValues.MinID || blockToUse > BlockIDValues.MaxID) // Ensure the returning value is valid.
+                            blockToUse = GetRandomBlockFromPattern(blockPattern);
 
                     // Place block if it doesn't already exist. (improves the performance)
-                    if (GetBlockFromLocation(blockLocation) != block)
+                    if (GetBlockFromLocation(blockLocation) != blockToUse)
                     {
-                        PlaceBlock(blockLocation, block);
+                        PlaceBlock(blockLocation, blockToUse);
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, blockToUse));
                     }
                 }
 
@@ -3855,12 +3805,12 @@ namespace DNA.CastleMinerZ.UI
                 var region = FillRegion(definedRegion, false, AirID);
 
                 // Delete the contents of this region.
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Remove blocks that are not already air. (improves the performance)
-                    if (GetBlockFromLocation(i) != AirID)
+                    if (GetBlockFromLocation(blockLocation) != AirID)
                     {
-                        PlaceBlock(i, AirID);
+                        PlaceBlock(blockLocation, AirID);
                     }
                 }
 
@@ -3887,11 +3837,21 @@ namespace DNA.CastleMinerZ.UI
 
             try
             {
-                bool useAir = true; // Enabled by default.
-                if (args.Length > 0 && args[0].Equals("false", StringComparison.OrdinalIgnoreCase)) useAir = false;
+                bool useAir = args.Any(a => a.Equals("false", StringComparison.OrdinalIgnoreCase)) == false; // Enabled by default.
+                bool pasteAtPoint1 = args.Any(a => a.Equals("pos1", StringComparison.OrdinalIgnoreCase));
+
+                Vector3 basePosition;
+                if (pasteAtPoint1)
+                    basePosition = _pointToLocation1;
+                else
+                {
+                    // Shift the whole copied box so that: (old player-anchor) -> (new player-anchor).
+                    Vector3 playerLoc = GetUsersLocation();
+                    basePosition = playerLoc - CopyAnchorOffset;
+                }
 
                 // PasteRegion(Region region).
-                var region = PasteRegion(_pointToLocation1);
+                var region = PasteRegion(basePosition);
 
                 // Save the existing region and clear the upcoming redo.
                 // Extract and save only the vector locations for the initial save.
@@ -3899,12 +3859,8 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (var i in region)
+                foreach (var (blockLocation, block) in region)
                 {
-                    // Get location of block and block ID.
-                    Vector3 blockLocation = i.Item1;
-                    int block = i.Item2;
-
                     // Check if useAir is disabled and if so, skip placing air blocks.
                     if (!useAir && block == AirID) continue;
 
@@ -4148,9 +4104,9 @@ namespace DNA.CastleMinerZ.UI
 
                             // Make sure the input is within the min/max.
                             int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                            if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                            if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                             {
-                                Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                                Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                                 return;
                             }
 
@@ -4192,9 +4148,9 @@ namespace DNA.CastleMinerZ.UI
 
                             // Make sure the input is within the min/max.
                             int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                            if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.Item1 || blockPatternNumbers.Max() > BlockIDValues.Item2)
+                            if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
                             {
-                                Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                                Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                                 return;
                             }
 
@@ -4326,23 +4282,29 @@ namespace DNA.CastleMinerZ.UI
         {
             if (args.Length < 1)
             {
-                Console.WriteLine("ERROR: Command usage /removenear [radii]");
+                Console.WriteLine("ERROR: Command usage /removenear [radii] (pos1)");
                 return;
             }
 
             try
             {
                 int radii = int.TryParse(args[0], out int r) ? r : 1;
+                bool pasteAtPoint1 = args.Any(a => a.Equals("pos1", StringComparison.OrdinalIgnoreCase));
+
+                // Define the base location.
+                Vector3 basePosition = GetUsersLocation();
+                if (pasteAtPoint1)
+                    basePosition = _pointToLocation1;
 
                 // Get the shortest distance from the world boundaries.
-                int furthestDistance = (int)Math.Max(Math.Abs(_pointToLocation1.Y - WorldHeights.Item2), Math.Abs(_pointToLocation1.Y - WorldHeights.Item1));
-                int shortestDistance = (int)Math.Min(Math.Abs(_pointToLocation1.Y - WorldHeights.Item2), Math.Abs(_pointToLocation1.Y - WorldHeights.Item1));
-                
+                int furthestDistance = (int)Math.Max(Math.Abs(basePosition.Y - WorldHeights.MaxY), Math.Abs(basePosition.Y - WorldHeights.MinY));
+                int shortestDistance = (int)Math.Min(Math.Abs(basePosition.Y - WorldHeights.MaxY), Math.Abs(basePosition.Y - WorldHeights.MinY));
+
                 // Get the max height based on the input and the cap.
                 int searchHeight = (radii <= furthestDistance) ? radii : furthestDistance;
         
                 // Get the center point.
-                Vector3 centerOffset = new Vector3(_pointToLocation1.X, _pointToLocation1.Y - (searchHeight / 2), _pointToLocation1.Z);
+                Vector3 centerOffset = new Vector3(basePosition.X, basePosition.Y - (searchHeight / 2), basePosition.Z);
 
                 // MakeCylinder(Vector3 pos, double radiusX, double radiusZ, int height, bool hollow, int ignoreBlock = -1).
                 var region = MakeCylinder(centerOffset, radii, radii, searchHeight, false, AirID);
@@ -4352,15 +4314,15 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Place block if it doesn't already exist. (improves the performance).
-                    if (GetBlockFromLocation(i) != AirID)
+                    if (GetBlockFromLocation(blockLocation) != AirID)
                     {
-                        PlaceBlock(i, AirID);
+                        PlaceBlock(blockLocation, AirID);
 
                         // Add block to redo.
-                        redoBuilder.Add(new Tuple<Vector3, int>(i, AirID));
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, AirID));
                     }
                 }
 
@@ -4384,7 +4346,7 @@ namespace DNA.CastleMinerZ.UI
         {
             if (args.Length < 3)
             {
-                Console.WriteLine("ERROR: Command usage /replacenear [radii] [source block,(all)] [to block,(all)]");
+                Console.WriteLine("ERROR: Command usage /replacenear [radii] [source block,(all)] [to block,(all)] (pos1)");
                 return;
             }
 
@@ -4393,6 +4355,12 @@ namespace DNA.CastleMinerZ.UI
                 int radii = int.TryParse(args[0], out int r) ? r : 1;
                 string searchPattern = !string.IsNullOrEmpty(args[1]) ? args[1] : "2";
                 string replacePattern = !string.IsNullOrEmpty(args[2]) ? args[2] : "1";
+                bool pasteAtPoint1 = args.Any(a => a.Equals("pos1", StringComparison.OrdinalIgnoreCase));
+
+                // Define the base location.
+                Vector3 basePosition = GetUsersLocation();
+                if (pasteAtPoint1)
+                    basePosition = _pointToLocation1;
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
                 searchPattern = (searchPattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern);
@@ -4400,27 +4368,27 @@ namespace DNA.CastleMinerZ.UI
 
                 // Make sure the input is within the min/max.
                 int[] searchPatternNumbers = (searchPattern == "all") ? new int[1] : (!string.IsNullOrEmpty(searchPattern)) ? searchPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (searchPatternNumbers.Length == 0 || searchPatternNumbers.Min() < BlockIDValues.Item1 || searchPatternNumbers.Max() > BlockIDValues.Item2)
+                if (searchPatternNumbers.Length == 0 || searchPatternNumbers.Min() < BlockIDValues.MinID || searchPatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
                 int[] replacePatternNumbers = (replacePattern == "all") ? new int[1] : (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.Item1 || replacePatternNumbers.Max() > BlockIDValues.Item2)
+                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.Item1}, max: {BlockIDValues.Item2})");
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
                     return;
                 }
 
                 // Get the shortest distance from the world boundaries.
-                int furthestDistance = (int)Math.Max(Math.Abs(_pointToLocation1.Y - WorldHeights.Item2), Math.Abs(_pointToLocation1.Y - WorldHeights.Item1));
-                int shortestDistance = (int)Math.Min(Math.Abs(_pointToLocation1.Y - WorldHeights.Item2), Math.Abs(_pointToLocation1.Y - WorldHeights.Item1));
+                int furthestDistance = (int)Math.Max(Math.Abs(basePosition.Y - WorldHeights.MaxY), Math.Abs(basePosition.Y - WorldHeights.MinY));
+                int shortestDistance = (int)Math.Min(Math.Abs(basePosition.Y - WorldHeights.MaxY), Math.Abs(basePosition.Y - WorldHeights.MinY));
                 
                 // Get the max height based on the input and the cap.
                 int searchHeight = (radii <= furthestDistance) ? radii : furthestDistance;
         
                 // Get the center point.
-                Vector3 centerOffset = new Vector3(_pointToLocation1.X, _pointToLocation1.Y - (searchHeight / 2), _pointToLocation1.Z);
+                Vector3 centerOffset = new Vector3(basePosition.X, basePosition.Y - (searchHeight / 2), basePosition.Z);
 
                 // MakeCylinder(Vector3 pos, double radiusX, double radiusZ, int height, bool hollow, int ignoreBlock = -1).
                 // Check if the from-block pattern contains air, and if so, have the region save it.
@@ -4434,10 +4402,10 @@ namespace DNA.CastleMinerZ.UI
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                foreach (Vector3 i in region)
+                foreach (Vector3 blockLocation in region)
                 {
                     // Get the current block type.
-                    int currentBlock = GetBlockFromLocation(i);
+                    int currentBlock = GetBlockFromLocation(blockLocation);
 
                     // Check if the current block is a block to replace.
                     if ((searchPattern == "all" && currentBlock != AirID) || currentBlock.ToString() == searchPattern) // Make sure not to replace 'air' when using 'all' mode.
@@ -4447,12 +4415,12 @@ namespace DNA.CastleMinerZ.UI
                         int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePattern);
 
                         // Place block if it doesn't already exist. (improves the performance).
-                        if (GetBlockFromLocation(i) != replaceBlock)
+                        if (GetBlockFromLocation(blockLocation) != replaceBlock)
                         {
-                            PlaceBlock(i, replaceBlock);
+                            PlaceBlock(blockLocation, replaceBlock);
 
                             // Add block to redo.
-                            redoBuilder.Add(new Tuple<Vector3, int>(i, replaceBlock));
+                            redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, replaceBlock));
                         }
                     }
                 }
@@ -4461,6 +4429,75 @@ namespace DNA.CastleMinerZ.UI
                 SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
+        #region /snow
+
+        [Command("/snow")]
+        private static void ExecuteSnow(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.WriteLine("ERROR: Command usage /snow [block(,array)] [radius] (pos1)");
+                return;
+            }
+
+            try
+            {
+                string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
+                int radius = int.TryParse(args[1], out int r) ? r : 10;
+                bool pasteAtPoint1 = args.Any(a => a.Equals("pos1", StringComparison.OrdinalIgnoreCase));
+
+                // Define the base location.
+                Vector3 basePosition = GetUsersLocation();
+                if (pasteAtPoint1)
+                    basePosition = _pointToLocation1;
+
+                // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
+                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
+
+                // Make sure the input is within the min/max.
+                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
+                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
+                {
+                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
+                    return;
+                }
+
+                // MakeSnow(Vector3 center, int radius).
+                var region = MakeSnow(basePosition, radius);
+
+                // Save the existing region and clear the upcoming redo.
+                // Extract and save only the vector locations for the initial save.
+                SaveUndo(region);
+                ClearRedo();
+
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                foreach (Vector3 blockLocation in region)
+                {
+                    // Get random block from input.
+                    int block = GetRandomBlockFromPattern(blockPattern);
+
+                    // Place block if it doesn't already exist. (improves the performance)
+                    if (GetBlockFromLocation(blockLocation) != block)
+                    {
+                        PlaceBlock(blockLocation, block);
+
+                        // Add block to redo.
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
+                    }
+                }
+
+                // Save the actions to undo stack.
+                SaveUndo(redoBuilder);
+
+                Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
@@ -4736,25 +4773,23 @@ namespace DNA.CastleMinerZ.UI
                     ClearRedo();
 
                     HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
-                    foreach (var i in region)
+                    foreach (var (blockLocation, block) in region)
                     {
                         // Get random block from input.
-                        int block;
-                        if (i.Item2 == -1)
-                            block = GetRandomBlockFromPattern(_brushBlockPattern);
-                        else
-                            block = i.Item2;
+                        int blockToUse = block;
+                        if (block == -1)
+                            blockToUse = GetRandomBlockFromPattern(_brushBlockPattern);
 
                         // Check for replace mode. If so, check if the current block is a block to replace, otherwise continue.
-                        if (!_brushReplaceMode || (_brushReplaceMode && GetBlockFromLocation(i.Item1) == cursorBlock) || _brushShape == "snow")
+                        if (!_brushReplaceMode || (_brushReplaceMode && GetBlockFromLocation(blockLocation) == cursorBlock) || _brushShape == "snow")
                         {
                             // Place block if it doesn't already exist. (improves the performance)
-                            if (GetBlockFromLocation(i.Item1) != block)
+                            if (GetBlockFromLocation(blockLocation) != blockToUse)
                             {
-                                PlaceBlock(i.Item1, block);
+                                PlaceBlock(blockLocation, blockToUse);
 
                                 // Add block to redo.
-                                redoBuilder.Add(new Tuple<Vector3, int>(i.Item1, block));
+                                redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, blockToUse));
                             }
                         }
                     }

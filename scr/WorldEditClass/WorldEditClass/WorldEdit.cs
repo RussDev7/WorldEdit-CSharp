@@ -92,6 +92,10 @@ public class WorldEdit
     // Define the main point1 and point2 location vectors. This is used to track the users initial set positions.
     public static Vector3 _pointToLocation1, _pointToLocation2;
 
+    // The offset from the copied region’s minimum corner to the player’s position at copy time.
+    // When pasting, this ensures the same relative spot in the clipboard lines up with the player.
+    public static Vector3 CopyAnchorOffset;
+
     // Define the main hashsets and their stacks. // Hashsets increase speed and removes unnecessary duplicates.
     // The undo and redo stacks use a third integer that's used as a guid to prevent removing duplicate regions.
     public static Stack<HashSet<Tuple<Vector3, int, int>>> UndoStack = new Stack<HashSet<Tuple<Vector3, int, int>>>();
@@ -293,8 +297,8 @@ public class WorldEdit
         public static int GetRandomBlock(HashSet<int> exclusionList)
         {
             // Define the min and max from the block definition.
-            int min = BlockIDValues.Item1;
-            int max = BlockIDValues.Item2;
+            int min = BlockIDValues.MinID;
+            int max = BlockIDValues.MaxID;
 
             using (var rng = new RNGCryptoServiceProvider())
             {
@@ -419,12 +423,12 @@ public class WorldEdit
 
         public static bool IsWithinWorldBounds(Vector3 pos, int additionalHeight = 0, int additionalDepth = 0)
         {
-            return pos.Y <= (WorldHeights.Item2 + additionalHeight) && pos.Y >= (WorldHeights.Item1 - additionalDepth);
+            return pos.Y <= (WorldHeights.MaxY + additionalHeight) && pos.Y >= (WorldHeights.MinY - additionalDepth);
         }
 
         public static bool IsWithinWorldBounds(int yPos, int additionalHeight = 0, int additionalDepth = 0)
         {
-            return yPos <= (WorldHeights.Item2 + additionalHeight) && yPos >= (WorldHeights.Item1 - additionalDepth);
+            return yPos <= (WorldHeights.MaxY + additionalHeight) && yPos >= (WorldHeights.MinY - additionalDepth);
         }
 
         public static Vector3 GetRegionCenter()
@@ -477,14 +481,14 @@ public class WorldEdit
         // Clamps yMin / yMax so the region stays within WorldHeights.
         public static void ClampToWorldHeight(ref float yMin, ref float yMax)
         {
-            yMin = Math.Max(yMin, WorldHeights.Item1);
-            yMax = Math.Min(yMax, WorldHeights.Item2);
+            yMin = Math.Max(yMin, WorldHeights.MinY);
+            yMax = Math.Min(yMax, WorldHeights.MaxY);
         }
 
         // Parses "x,z" or "x,y,z" into a Vector3 (ints). Returns false if malformed.
         public static bool TryParseXYZ(string s, out Vector3 v)
         {
-            int x = 0, y = 0, z = 0;
+            int x, z;
             v = default;
             var parts = s.Split(',');
             if (parts.Length == 2)
@@ -492,14 +496,14 @@ public class WorldEdit
                 if (int.TryParse(parts[0], out x) &&
                     int.TryParse(parts[1], out z))
                 {
-                    v = new Vector3(x, 0, z);    // Y ignored
+                    v = new Vector3(x, 0, z); // Y ignored.
                     return true;
                 }
             }
             else if (parts.Length == 3)
             {
                 if (int.TryParse(parts[0], out x) &&
-                    int.TryParse(parts[1], out y) &&
+                    int.TryParse(parts[1], out int y) &&
                     int.TryParse(parts[2], out z))
                 {
                     v = new Vector3(x, y, z);
@@ -556,7 +560,7 @@ public class WorldEdit
                 return Convert.ToInt32(result);
             }
 
-            return BlockIDValues.Item1; // Return the minimum ID (or invalid value) if not found.
+            return BlockIDValues.MinID; // Return the minimum ID (or invalid value) if not found.
         }
 
         // Levenshtein Distance Algorithm.
@@ -1234,11 +1238,11 @@ public class WorldEdit
 
     public static Vector3 GetAscendingVector(Vector3 pos)
     {
-        for (int y = (int)pos.Y; y < WorldHeights.Item2; y++)                         // Start at current Y, go up.
+        for (int y = (int)pos.Y; y < WorldHeights.MaxY; y++)                         // Start at current Y, go up.
         {
             if (GetBlockFromLocation(new Vector3(pos.X, y, pos.Z)) != AirID)          // Stop at non air block.
             {
-                for (int y2 = y + 1; y2 < WorldHeights.Item2; y2++)                   // Continue up to find a valid block to stand on.
+                for (int y2 = y + 1; y2 < WorldHeights.MaxY; y2++)                   // Continue up to find a valid block to stand on.
                 {
                     if (GetBlockFromLocation(new Vector3(pos.X, y2, pos.Z)) == AirID) // Stop at air.
                     {
@@ -1255,15 +1259,15 @@ public class WorldEdit
 
     public static Vector3 GetDescendingVector(Vector3 pos)
     {
-        for (int y = (int)pos.Y; y > WorldHeights.Item1; y--)                                 // Start at current Y, go down.
+        for (int y = (int)pos.Y; y > WorldHeights.MinY; y--)                                 // Start at current Y, go down.
         {
             if (GetBlockFromLocation(new Vector3(pos.X, y, pos.Z)) != AirID)                  // Stop at none air block.
             {
-                for (int y2 = y - 1; y2 > WorldHeights.Item1; y2--)                           // Continue down to find air.
+                for (int y2 = y - 1; y2 > WorldHeights.MinY; y2--)                           // Continue down to find air.
                 {
                     if (GetBlockFromLocation(new Vector3(pos.X, y2, pos.Z)) == AirID)         // Stop at air.
                     {
-                        for (int y3 = y2 - 1; y3 > WorldHeights.Item1; y3--)                  // Continue down to find a valid block to stand on.
+                        for (int y3 = y2 - 1; y3 > WorldHeights.MinY; y3--)                  // Continue down to find a valid block to stand on.
                         {
                             if (GetBlockFromLocation(new Vector3(pos.X, y3, pos.Z)) != AirID) // Stop at non air block.
                             {
@@ -1282,7 +1286,7 @@ public class WorldEdit
 
     public static Vector3 GetCeilingVector(Vector3 pos)
     {
-        for (int y = WorldHeights.Item2; y > WorldHeights.Item1 - 1; y--)    // Start at max Y, go down.
+        for (int y = WorldHeights.MaxY; y > WorldHeights.MinY - 1; y--)    // Start at max Y, go down.
         {
             if (GetBlockFromLocation(new Vector3(pos.X, y, pos.Z)) != AirID) // Stop at non air block.
             {
@@ -1402,7 +1406,7 @@ public class WorldEdit
         for (int y = (int)region.Position1.Y; y <= (int)region.Position2.Y; ++y)
         {
             // Ensure Y is within the world's height constraints.
-            if (y > WorldHeights.Item2 || y < WorldHeights.Item1)
+            if (y > WorldHeights.MaxY || y < WorldHeights.MinY)
                 continue;
 
             for (int x = (int)region.Position1.X; x <= (int)region.Position2.X; ++x)
@@ -1455,7 +1459,6 @@ public class WorldEdit
     /// 'FloodFill'
     /// 'Wrap'
     /// 'Matrix'
-    /// 'Snow'
     /// 'Forest'
     /// 'Tree'
     /// 
@@ -1471,7 +1474,7 @@ public class WorldEdit
         for (int y = (int)region.Position1.Y; y <= (int)region.Position2.Y; ++y)
         {
             // Ensure Y is within the world's height constraints.
-            if (y > WorldHeights.Item2 || y < WorldHeights.Item1)
+            if (y > WorldHeights.MaxY || y < WorldHeights.MinY)
                 continue;
 
             for (int x = (int)region.Position1.X; x <= (int)region.Position2.X; ++x)
@@ -1532,7 +1535,7 @@ public class WorldEdit
             Vector3 roundedPoint = new Vector3((int)point.X, (int)point.Y, (int)point.Z);
 
             // Ensure Y is within the world's height constraints.
-            if (roundedPoint.Y > WorldHeights.Item2 || roundedPoint.Y < WorldHeights.Item1)
+            if (roundedPoint.Y > WorldHeights.MaxY || roundedPoint.Y < WorldHeights.MinY)
                 continue;
 
             lineBlocks.Add(new Vector3(roundedPoint.X, roundedPoint.Y, roundedPoint.Z));
@@ -1560,7 +1563,7 @@ public class WorldEdit
                 {
                     // Ensure Y is within the world's height constraints.
                     int worldY = (int)block.Y + yOffset; // Calculate actual world Y position.
-                    if (worldY > WorldHeights.Item2 || worldY < WorldHeights.Item1)
+                    if (worldY > WorldHeights.MaxY || worldY < WorldHeights.MinY)
                         continue;
 
                     for (int zOffset = -thickness; zOffset <= thickness; zOffset++)
@@ -1662,7 +1665,7 @@ public class WorldEdit
             for (int y = minY; y <= maxY; y++)
             {
                 // Ensure Y is within the world's height constraints.
-                if (y > WorldHeights.Item2 || y < WorldHeights.Item1)
+                if (y > WorldHeights.MaxY || y < WorldHeights.MinY)
                     continue;
 
                 for (int z = minZ; z <= maxZ; z++)
@@ -1784,7 +1787,7 @@ public class WorldEdit
                     Vector3 newPos = originalPos + moveOffset;
 
                     // Ensure the new position's Y coordinate is within world height boundaries.
-                    if (newPos.Y > WorldHeights.Item2 || newPos.Y < WorldHeights.Item1)
+                    if (newPos.Y > WorldHeights.MaxY || newPos.Y < WorldHeights.MinY)
                         continue;
 
                     // Save existing block from location.
@@ -1830,7 +1833,7 @@ public class WorldEdit
                         Vector3 regionOffset = new Vector3(x, y, z) + GetStackedRegionOffset(region, facingDirection, stackOffset, i);
 
                         // Ensure Y is within the world's height constraints.
-                        if (regionOffset.Y > WorldHeights.Item2 || regionOffset.Y < WorldHeights.Item1)
+                        if (regionOffset.Y > WorldHeights.MaxY || regionOffset.Y < WorldHeights.MinY)
                             continue;
 
                         // Save new location to stack region hashset.
@@ -1914,13 +1917,13 @@ public class WorldEdit
             // Process each row (constant Y and Z).
             foreach (var kvp in rows)
             {
-                var key = kvp.Key; // key = (y, z)
-                var rowBlocks = kvp.Value; // Each tuple: (originalX, blockType)
+                var key = kvp.Key;         // key = (y, z).
+                var rowBlocks = kvp.Value; // Each tuple: (originalX, blockType).
                 var transformed = rowBlocks
                     .Select(b => new
                     {
                         newCoord = (int)Math.Round(centerX + ((double)b.originalX - centerX) * stretchFactor),
-                        blockType = b.blockType,
+                        b.blockType,
                         original = b.originalX
                     })
                     .ToList();
@@ -2015,13 +2018,13 @@ public class WorldEdit
             // Process each group (constant X and Z).
             foreach (var kvp in rows)
             {
-                var key = kvp.Key; // key = (x, z)
-                var rowBlocks = kvp.Value; // Each tuple: (originalY, blockType)
+                var key = kvp.Key;         // key = (x, z).
+                var rowBlocks = kvp.Value; // Each tuple: (originalY, blockType).
                 var transformed = rowBlocks
                     .Select(b => new
                     {
                         newCoord = (int)Math.Round(centerY + ((double)b.originalY - centerY) * stretchFactor),
-                        blockType = b.blockType,
+                        b.blockType,
                         original = b.originalY
                     })
                     .ToList();
@@ -2037,7 +2040,7 @@ public class WorldEdit
                     
                     // Clamp Y to world bounds to ensure the new Y value is within world bounds.
                     Vector3 newLocation = new Vector3(key.Item1, current.newCoord, key.Item2);
-                    int clampedY = (int)Math.Min(Math.Max(newLocation.Y, WorldHeights.Item1), WorldHeights.Item2);
+                    int clampedY = (int)Math.Min(Math.Max(newLocation.Y, WorldHeights.MinY), WorldHeights.MaxY);
                     Vector3 finalLocation = new Vector3(newLocation.X, clampedY, newLocation.Z);
 
                     if (useAir || GetBlockFromLocation(newLocation) != current.blockType || current.blockType != AirID)
@@ -2056,7 +2059,7 @@ public class WorldEdit
                             for (int fillY = start + 1; fillY < end; fillY++)
                             {
                                 // Clamp the fill Y position to ensure the new Y value is within world bounds.
-                                int clampedFillY = (int)Math.Min(Math.Max(fillY, WorldHeights.Item1), WorldHeights.Item2);
+                                int clampedFillY = (int)Math.Min(Math.Max(fillY, WorldHeights.MinY), WorldHeights.MaxY);
                                 Vector3 fillLocation = new Vector3(key.Item1, clampedFillY, key.Item2);
 
                                 if (useAir || GetBlockFromLocation(fillLocation) != current.blockType || current.blockType != AirID)
@@ -2080,7 +2083,7 @@ public class WorldEdit
                     int fillEnd = Math.Max(last.newCoord, extensionEnd);
                     for (int fillY = fillStart + 1; fillY < fillEnd; fillY++)
                     {
-                        int clampedFillY = (int)Math.Min(Math.Max(fillY, WorldHeights.Item1), WorldHeights.Item2);
+                        int clampedFillY = (int)Math.Min(Math.Max(fillY, WorldHeights.MinY), WorldHeights.MaxY);
                         Vector3 fillLocation = new Vector3(key.Item1, clampedFillY, key.Item2);
 
                         if (useAir || GetBlockFromLocation(fillLocation) != last.blockType || last.blockType != AirID)
@@ -2089,7 +2092,7 @@ public class WorldEdit
                                 last.blockType));
                     }
                     // Clamp the extension end before adding to ensure the new Y value is within world bounds.
-                    int clampedExtensionY = (int)Math.Min(Math.Max(extensionEnd, WorldHeights.Item1), WorldHeights.Item2);
+                    int clampedExtensionY = (int)Math.Min(Math.Max(extensionEnd, WorldHeights.MinY), WorldHeights.MaxY);
                     Vector3 extensionLocation = new Vector3(key.Item1, clampedExtensionY, key.Item2);
 
                     if (useAir || GetBlockFromLocation(new Vector3(key.Item1, extensionEnd, key.Item2)) != last.blockType || last.blockType != AirID)
@@ -2123,13 +2126,13 @@ public class WorldEdit
             // Process each group (constant X and Y).
             foreach (var kvp in rows)
             {
-                var key = kvp.Key; // key = (x, y)
-                var rowBlocks = kvp.Value; // Each tuple: (originalZ, blockType)
+                var key = kvp.Key;         // key = (x, y).
+                var rowBlocks = kvp.Value; // Each tuple: (originalZ, blockType).
                 var transformed = rowBlocks
                     .Select(b => new
                     {
                         newCoord = (int)Math.Round(centerZ + ((double)b.originalZ - centerZ) * stretchFactor),
-                        blockType = b.blockType,
+                        b.blockType,
                         original = b.originalZ
                     })
                     .ToList();
@@ -3037,7 +3040,7 @@ public class WorldEdit
                 Vector3 neighbor = current + dir;
 
                 // Enforce Y constraints (only flood-fill within Y: max height to min height).
-                if (neighbor.Y > WorldHeights.Item2 || neighbor.Y < WorldHeights.Item1) continue;
+                if (neighbor.Y > WorldHeights.MaxY || neighbor.Y < WorldHeights.MinY) continue;
 
                 // Ensure block matches the block ID and hasn't been visited
                 if (GetBlockFromLocation(neighbor) == blockID && !filledPositions.Contains(neighbor))
@@ -3175,7 +3178,7 @@ public class WorldEdit
     private static int GetTerrainHeight(int x, int z)
     {
         // Loop through each Y-level from 62 to -62, checking for non-empty blocks (e.g., terrain).
-        for (int y = WorldHeights.Item2; y > (WorldHeights.Item1 - 1); y--)
+        for (int y = WorldHeights.MaxY; y > (WorldHeights.MinY - 1); y--)
         {
             // Create a vector for the world coordinates at each y-level.
             Vector3 currentPosition = new Vector3(x, y, z);
@@ -3187,42 +3190,7 @@ public class WorldEdit
                 return (y + 1);
             }
         }
-        return WorldHeights.Item1; // Return the lowest world level.
-    }
-    #endregion
-
-    #region Snow
-
-    public static HashSet<Vector3> MakeSnow(Vector3 center, int radius, bool replaceSurface = false)
-    {
-        HashSet<Vector3> snowBlocks = new HashSet<Vector3>();
-
-        for (int x = (int)center.X - radius; x <= (int)center.X + radius; ++x)
-        {
-            for (int z = (int)center.Z - radius; z <= (int)center.Z + radius; ++z)
-            {
-                // Ensure the point is within the circular radius.
-                if ((x - (int)center.X) * (x - (int)center.X) + (z - (int)center.Z) * (z - (int)center.Z) <= radius * radius)
-                {
-                    // Loop through each Y-level from 62 to -62, checking for non-empty blocks (e.g., terrain).
-                    for (int y = WorldHeights.Item2; y > WorldHeights.Item1 - 1; y--)
-                    {
-                        // Check if the block is not empty.
-                        if (GetBlockFromLocation(new Vector3(x, y, z)) != AirID)
-                        {
-                            // If replace mode is enabled, don't offset upwards.
-                            if (replaceSurface)
-                                snowBlocks.Add(new Vector3(x, y, z));
-                            else
-                                snowBlocks.Add(new Vector3(x, y + 1f, z));
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        return snowBlocks;
+        return WorldHeights.MinY; // Return the lowest world level.
     }
     #endregion
 
@@ -3262,10 +3230,10 @@ public class WorldEdit
         try
         {
             // Start by assuming a height below the surface.
-            float treeBaseHeight = WorldHeights.Item1;
+            float treeBaseHeight = WorldHeights.MinY;
 
             // Loop through each Y-level from 62 to -62, checking for non-empty blocks (e.g., terrain).
-            for (int y = WorldHeights.Item2; y > (WorldHeights.Item1 - 1); y--)
+            for (int y = WorldHeights.MaxY; y > (WorldHeights.MinY - 1); y--)
             {
                 // Create a vector for the world coordinates at each y-level.
                 Vector3 currentPosition = new Vector3(worldX, y, worldZ);
@@ -3292,7 +3260,7 @@ public class WorldEdit
                 // Build the trunk of the tree by placing log blocks.
                 for (int i = 0; i < treeHeight; i++)
                 {
-                    if ((int)treeBaseHeight + trunkHeight <= WorldHeights.Item2)
+                    if ((int)treeBaseHeight + trunkHeight <= WorldHeights.MaxY)
                     {
                         Vector3 trunkPosition = new Vector3(worldX, (int)treeBaseHeight + trunkHeight, worldZ);
 
@@ -3313,7 +3281,7 @@ public class WorldEdit
                             Vector3 foliagePosition = new Vector3(worldX + xOffset, (int)treeBaseHeight + yOffset + trunkHeight, worldZ + zOffset);
 
                             // Ensure the foliage is within the map height limit.
-                            if ((float)foliagePosition.Y <= WorldHeights.Item2)
+                            if ((float)foliagePosition.Y <= WorldHeights.MaxY)
                             {
                                 // Check if the block is empty or unassigned
                                 int blockType = GetBlockFromLocation(foliagePosition);
@@ -3404,7 +3372,7 @@ public class WorldEdit
             {
                 // Ensure Y is within the world's height constraints.
                 int worldY = (int)pos.Y + y; // Calculate actual world Y position.
-                if (worldY > WorldHeights.Item2 || worldY < WorldHeights.Item1)
+                if (worldY > WorldHeights.MaxY || worldY < WorldHeights.MinY)
                     continue;
 
                 for (int z = -halfradii; z < radii - halfradii; ++z)
@@ -3475,7 +3443,7 @@ public class WorldEdit
                             if (!isEdge)
                                 continue;
                         }
-                        if (y > WorldHeights.Item2 || y < WorldHeights.Item1)
+                        if (y > WorldHeights.MaxY || y < WorldHeights.MinY)
                             continue;
                         Vector3 newPos = new Vector3(x, y, z);
                         if (ignoreBlock == -1 || GetBlockFromLocation(newPos) != ignoreBlock)
@@ -3509,7 +3477,7 @@ public class WorldEdit
                             if (!isEdge)
                                 continue;
                         }
-                        if (y > WorldHeights.Item2 || y < WorldHeights.Item1)
+                        if (y > WorldHeights.MaxY || y < WorldHeights.MinY)
                             continue;
                         Vector3 newPos = new Vector3(x, y, z);
                         if (ignoreBlock == -1 || GetBlockFromLocation(newPos) != ignoreBlock)
@@ -3985,7 +3953,7 @@ public class WorldEdit
             for (int y = minY; y <= maxY; y++)
             {
                 // Ensure y is within world bounds.
-                if (y > WorldHeights.Item2 || y < WorldHeights.Item1)
+                if (y > WorldHeights.MaxY || y < WorldHeights.MinY)
                     continue;
 
                 for (int z = minZ; z <= maxZ; z++)
@@ -4153,7 +4121,8 @@ public class WorldEdit
                 return;
             }
 
-            copiedRegion.Clear(); // Clear existing region.
+            CopyAnchorOffset = Vector3.Zero; // Clear existing copy offset.
+            copiedRegion.Clear();            // Clear existing region.
 
             // Deserialize data.
             while (reader.BaseStream.Position < reader.BaseStream.Length)
@@ -4201,6 +4170,9 @@ public class WorldEdit
 
     public static void CopyRegion(Region region)
     {
+        // Record the users position within the region. This is used to offset the paste.
+        CopyAnchorOffset = GetUsersLocation() - region.Position1;
+
         // Clear existing region.
         copiedRegion.Clear();
 
@@ -4476,6 +4448,50 @@ public class WorldEdit
     {
         copiedRegion.Clear();
         copiedStackRegion.Clear();
+    }
+    #endregion
+
+    #endregion
+
+    /// <summary>
+    /// 
+    /// 'Snow'
+    /// 
+    /// </summary>
+    #region Utility Methods
+
+    #region Snow
+
+    public static HashSet<Vector3> MakeSnow(Vector3 center, int radius, bool replaceSurface = false)
+    {
+        HashSet<Vector3> snowBlocks = new HashSet<Vector3>();
+
+        for (int x = (int)center.X - radius; x <= (int)center.X + radius; ++x)
+        {
+            for (int z = (int)center.Z - radius; z <= (int)center.Z + radius; ++z)
+            {
+                // Ensure the point is within the circular radius.
+                if ((x - (int)center.X) * (x - (int)center.X) + (z - (int)center.Z) * (z - (int)center.Z) <= radius * radius)
+                {
+                    // Loop through each Y-level from 62 to -62, checking for non-empty blocks (e.g., terrain).
+                    for (int y = WorldHeights.MaxY; y > WorldHeights.MinY - 1; y--)
+                    {
+                        // Check if the block is not empty.
+                        if (GetBlockFromLocation(new Vector3(x, y, z)) != AirID)
+                        {
+                            // If replace mode is enabled, don't offset upwards.
+                            if (replaceSurface)
+                                snowBlocks.Add(new Vector3(x, y, z));
+                            else
+                                snowBlocks.Add(new Vector3(x, y + 1f, z));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return snowBlocks;
     }
     #endregion
 
