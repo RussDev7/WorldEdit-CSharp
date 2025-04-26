@@ -876,6 +876,9 @@ namespace WE_ImageToPixelart
             }
             else if (GetKeyState((int)Keys.RButton) < 0)
             {
+                // Stop the System.Windows.Forms.Timer.
+                ((System.Windows.Forms.Timer)sender).Stop();
+
                 // Cancel the pick.
                 DeleteColor.BackColor = SystemColors.Control;
                 DeleteColor.Text = "Delete Color";
@@ -2026,6 +2029,18 @@ namespace WE_ImageToPixelart
                     // Handle any errors, such as invalid coordinates or image not loaded
                     return;
                 }
+            }
+            else if (GetKeyState((int)Keys.RButton) < 0)
+            {
+                // Stop the System.Windows.Forms.Timer.
+                ((System.Windows.Forms.Timer)sender).Stop();
+
+                // Cancel the pick.
+                CustomColorPicker.BackColor = default;
+                CustomColorPicker.Text = "Custom Color Picker";
+                CustomColorPicker.BackColor = Color.FromArgb(127, 127, 127);
+                CustomColorPicker.Enabled = true;
+                return;
             }
         }
 
