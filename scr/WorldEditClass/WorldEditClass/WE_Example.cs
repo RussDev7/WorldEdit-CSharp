@@ -36,9 +36,7 @@ using static WorldEdit;
 using Vector3 = Microsoft.Xna.Framework.Vector3;               // For testing purposes.
 using ButtonState = Microsoft.Xna.Framework.Input.ButtonState; // For testing purposes.
 using MouseState = Microsoft.Xna.Framework.Input.MouseState;   // For testing purposes.
-using Mouse = Microsoft.Xna.Framework.Input.Mouse;
-using DNA.CastleMinerZ.Terrain;
-using DNA.CastleMinerZ.Inventory;             // For testing purposes.
+using Mouse = Microsoft.Xna.Framework.Input.Mouse;             // For testing purposes.        
 
 namespace DNA.CastleMinerZ.UI
 {
