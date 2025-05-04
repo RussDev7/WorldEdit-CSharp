@@ -29,13 +29,16 @@ using System.Text;
 using System.IO;
 using System;
 
+using static WorldEdit.EnumMapper;
 using static WorldEdit.WorldUtils;
 using static WorldEdit;
 
 using Vector3 = Microsoft.Xna.Framework.Vector3;               // For testing purposes.
 using ButtonState = Microsoft.Xna.Framework.Input.ButtonState; // For testing purposes.
 using MouseState = Microsoft.Xna.Framework.Input.MouseState;   // For testing purposes.
-using Mouse = Microsoft.Xna.Framework.Input.Mouse;             // For testing purposes.
+using Mouse = Microsoft.Xna.Framework.Input.Mouse;
+using DNA.CastleMinerZ.Terrain;
+using DNA.CastleMinerZ.Inventory;             // For testing purposes.
 
 namespace DNA.CastleMinerZ.UI
 {
@@ -196,6 +199,7 @@ namespace DNA.CastleMinerZ.UI
 
             // Region Commands.
             ("set [block(,array)] (hollow)",                                           "Sets all the blocks in the region."),
+            ("break (mask block(,array))",                                             "Breaks all blocks in the region (drops items)."),
             ("line [block(,array)] (thickness)",                                       "Draws line segments between two positions."),
             ("replace [source block,(all)] [to block,(all)]",                          "Replace all blocks in the selection with another."),
             ("allexcept [source block(,array)] (to block(,array))",                    "Replace all blocks except a desired block pattern."),
@@ -1331,15 +1335,8 @@ namespace DNA.CastleMinerZ.UI
                 string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] maskArray = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (maskArray.Length == 0 || maskArray.Min() < BlockIDValues.MinID || maskArray.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] maskArray = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (maskArray.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data and mask data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -1444,15 +1441,8 @@ namespace DNA.CastleMinerZ.UI
                 string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] maskArray = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (maskArray.Length == 0 || maskArray.Min() < BlockIDValues.MinID || maskArray.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] maskArray = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (maskArray.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data and mask data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -1716,15 +1706,8 @@ namespace DNA.CastleMinerZ.UI
                 bool hollow = args.Length > 1 && args[1].Equals("true", StringComparison.OrdinalIgnoreCase);
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -1754,7 +1737,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -1795,15 +1778,8 @@ namespace DNA.CastleMinerZ.UI
                 int thickness = args.Length > 1 && int.TryParse(args[1], out int t) ? t : 0;
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -1819,7 +1795,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -1862,22 +1838,10 @@ namespace DNA.CastleMinerZ.UI
                 string replacePattern = !string.IsNullOrEmpty(args[1]) ? args[1] : "1";
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                searchPattern = (searchPattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern);
-                replacePattern = (replacePattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
-
-                // Make sure the input is within the min/max.
-                int[] searchPatternNumbers = (searchPattern == "all") ? new int[1] : (!string.IsNullOrEmpty(searchPattern)) ? searchPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (searchPatternNumbers.Length == 0 || searchPatternNumbers.Min() < BlockIDValues.MinID || searchPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
-                int[] replacePatternNumbers = (replacePattern == "all") ? new int[1] : (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] searchPatternNumbers = (searchPattern == "all") ? new int[1] : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern, BlockIDValues);
+                if (searchPattern != "all" && searchPatternNumbers.Length == 0) return;   // Make sure the input is within the min/max.
+                int[] replacePatternNumbers = (replacePattern == "all") ? new int[1] : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern, BlockIDValues);
+                if (replacePattern != "all" && replacePatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -1890,7 +1854,7 @@ namespace DNA.CastleMinerZ.UI
                 if (searchPattern == "all")
                     SaveUndo(region);
                 else
-                    SaveUndo(region, int.Parse(searchPattern));
+                    SaveUndo(region, saveBlock: searchPatternNumbers);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -1900,11 +1864,11 @@ namespace DNA.CastleMinerZ.UI
                     int currentBlock = GetBlockFromLocation(blockLocation);
 
                     // Check if the current block is a block to replace.
-                    if ((searchPattern == "all" && currentBlock != AirID) || currentBlock.ToString() == searchPattern) // Make sure not to replace 'air' when using 'all' mode.
+                    if ((searchPattern == "all" && currentBlock != AirID) || searchPatternNumbers.Contains(currentBlock)) // Make sure not to replace 'air' when using 'all' mode.
                     {
                         // Get random block from input.
                         HashSet<int> excludedBlocks = new HashSet<int> { AirID, 26 }; // IDs to exclude. Block ID 26 'Torch' crashes.
-                        int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePattern);
+                        int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePatternNumbers);
 
                         // Place block if it doesn't already exist. (improves the performance).
                         if (GetBlockFromLocation(blockLocation) != replaceBlock)
@@ -1947,22 +1911,11 @@ namespace DNA.CastleMinerZ.UI
                 string replacePattern = args.Length > 1 && !string.IsNullOrEmpty(args[1]) ? args[1] : "0";
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                exceptPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(exceptPattern);
-                replacePattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
+                int[] exceptPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(exceptPattern);
+                if (exceptPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
-                // Make sure the input is within the min/max.
-                int[] exceptPatternNumbers = (!string.IsNullOrEmpty(exceptPattern)) ? exceptPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (exceptPatternNumbers.Length == 0 || exceptPatternNumbers.Min() < BlockIDValues.MinID || exceptPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
-                int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] replacePatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern, BlockIDValues);
+                if (replacePatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -1988,7 +1941,7 @@ namespace DNA.CastleMinerZ.UI
                     if ((!excludedBlocks.Contains(currentBlock)) && currentBlock != AirID)
                     {
                         // Get random block from input.
-                        int replaceBlock = GetRandomBlockFromPattern(replacePattern);
+                        int replaceBlock = GetRandomBlockFromPattern(replacePatternNumbers);
 
                         // Place block if it doesn't already exist. (improves the performance).
                         if (GetBlockFromLocation(blockLocation) != replaceBlock)
@@ -2029,15 +1982,8 @@ namespace DNA.CastleMinerZ.UI
                 string replacePattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "0";
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                replacePattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
-
-                // Make sure the input is within the min/max.
-                int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] replacePatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern, BlockIDValues);
+                if (replacePatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -2054,7 +2000,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(replacePattern);
+                    int block = GetRandomBlockFromPattern(replacePatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -2093,16 +2039,9 @@ namespace DNA.CastleMinerZ.UI
             {
                 string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
 
-                // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+               // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -2118,7 +2057,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -2500,15 +2439,8 @@ namespace DNA.CastleMinerZ.UI
                 bool rotate90 = args.Length > 3 && args[3].Equals("true", StringComparison.OrdinalIgnoreCase);
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeWords(Vector3 pos, string wordString, bool flipAxes = false, bool rotate90 = false).
                 var region = MakeWords(_pointToLocation1, words, flipAxis, rotate90);
@@ -2521,7 +2453,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -2556,15 +2488,8 @@ namespace DNA.CastleMinerZ.UI
                 int thickness = args.Length > 1 && int.TryParse(args[1], out int t) ? t : 1;
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                replacePattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
-
-                // Make sure the input is within the min/max.
-                int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] replacePatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern, BlockIDValues);
+                if (replacePatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -2581,7 +2506,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(replacePattern);
+                    int block = GetRandomBlockFromPattern(replacePatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -2621,15 +2546,8 @@ namespace DNA.CastleMinerZ.UI
                 string replacePattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                replacePattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
-
-                // Make sure the input is within the min/max.
-                int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] replacePatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern, BlockIDValues);
+                if (replacePatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -2646,7 +2564,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(replacePattern);
+                    int block = GetRandomBlockFromPattern(replacePatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -2711,15 +2629,8 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                replacePattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
-
-                // Make sure the input is within the min/max.
-                int[] replacePatternNumbers = (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] replacePatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern, BlockIDValues);
+                if (replacePatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -2736,7 +2647,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(replacePattern);
+                    int block = GetRandomBlockFromPattern(replacePatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -2785,19 +2696,29 @@ namespace DNA.CastleMinerZ.UI
                 bool snow = args.Length > 2 && args[2].Equals("true", StringComparison.OrdinalIgnoreCase);
                 string optionalBlockPattern = args.Length > 3 && !string.IsNullOrEmpty(args[3]) ? args[3] : "";
 
-                // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                optionalBlockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(optionalBlockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] optionalBlockPatternNumbers = (!string.IsNullOrEmpty(optionalBlockPattern)) ? optionalBlockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (optionalBlockPatternNumbers.Length == 0 || optionalBlockPatternNumbers.Min() < BlockIDValues.MinID || optionalBlockPatternNumbers.Max() > BlockIDValues.MaxID)
+                // Populate optional arguments.
+                for (int i = 2; i < args.Length; i++)
                 {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
+                    var a = args[i].Trim();
+
+                    // Check if it's parseable as a bool.
+                    if (bool.TryParse(a, out bool parsedSnow))
+                    {
+                        snow = parsedSnow;
+                    }
+                    else
+                    {
+                        // Otherwise, assume it's the block pattern.
+                        optionalBlockPattern = a;
+                    }
                 }
 
-                // MakeMatrix(Vector3 pos, int radius, int spacing, bool enableSnow, string optionalBlockPattern).
-                var region = MakeMatrix(_pointToLocation1, radius, spacing, snow, optionalBlockPattern);
+                // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
+                int[] optionalBlockPatternNumbers = (!string.IsNullOrEmpty(optionalBlockPattern)) ? GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(optionalBlockPattern) : new int[0];
+                // if (optionalBlockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
+
+                // MakeMatrix(Vector3 pos, int radius, int spacing, bool enableSnow, int[] optionalBlockPattern).
+                var region = MakeMatrix(_pointToLocation1, radius, spacing, snow, optionalBlockPatternNumbers);
 
                 // Save the existing region and clear the upcoming redo.
                 // Extract and save only the vector locations for the initial save.
@@ -2924,6 +2845,74 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
+        #region /break
+
+        [Command("/break")]
+        private static void ExecuteBreak(string[] args)
+        {
+            try
+            {
+                string blockPattern = args.Length > 0 && !string.IsNullOrEmpty(args[0]) ? args[0] : "";
+
+                // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
+                int[] maskArray = (!string.IsNullOrEmpty(blockPattern)) ? GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues) : new int[0];
+                // if (maskArray.Length == 0) return; // Make sure the input is within the min/max.
+
+                // Define location data.
+                Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
+                HashSet<int> maskSet = new HashSet<int>(maskArray);
+
+                // Check and make sure the region contains less than a million blocks.
+                // Make 'No' the highlighted option. Helps mitigate issues when using '/tool'.
+                if (CalculateBlockCount(definedRegion.Position1, definedRegion.Position2) > 1000000 &&
+                    MessageBox.Show("This region contains over a million blocks.\n\nDo you want to continue anyways?",
+                                    "WE: Woah! That's a ton of blocks!",
+                                    MessageBoxButtons.YesNo,
+                                    MessageBoxIcon.Warning,
+                                    MessageBoxDefaultButton.Button2) == DialogResult.No)
+                {
+                    Console.WriteLine("Operation canceled.");
+                    return;
+                }
+
+                // FillRegion(Region region, bool hollow, int ignoreBlock = -1).
+                var region = FillRegion(definedRegion, false, AirID);
+
+                // Save the existing region and clear the upcoming redo.
+                SaveUndo(region);
+                ClearRedo();
+
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                foreach (Vector3 blockLocation in region)
+                {
+                    // Check if the mask is enabled. If not, remove block, if so, use mask.
+                    int block = GetBlockFromLocation(blockLocation);
+                    if (string.IsNullOrEmpty(blockPattern) || maskSet.Contains(block))
+                    {
+                        PlaceBlock(blockLocation, AirID);
+
+                        // Try to map the block to its item id. If valid, drop the block as an item.
+                        var blockType = (DNA.CastleMinerZ.Terrain.BlockTypeEnum)block;
+                        if (TryMapEnum<DNA.CastleMinerZ.Terrain.BlockTypeEnum, DNA.CastleMinerZ.Inventory.InventoryItemIDs>(blockType, out var item))
+                            DropItem(blockLocation, (int)item);
+
+                        // Add block to redo.
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, AirID));
+                    }
+                }
+
+                // Save the actions to undo stack.
+                SaveUndo(redoBuilder);
+
+                Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}");
+            }
+        }
+        #endregion
+
         // Generation Commands.
 
         #region /floor
@@ -2944,15 +2933,8 @@ namespace DNA.CastleMinerZ.UI
                 bool hollow = args.Length > 2 && args[2].Equals("true", StringComparison.OrdinalIgnoreCase);
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeFloor(Vector3 pos, int size, bool hollow, int ignoreBlock = -1).
                 var region = MakeFloor(_pointToLocation1, radius, hollow);
@@ -2965,7 +2947,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -3007,15 +2989,8 @@ namespace DNA.CastleMinerZ.UI
                 bool hollow = args.Length > 2 && args[2].Equals("true", StringComparison.OrdinalIgnoreCase);
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeCube(Vector3 pos, int radii, bool hollow, int ignoreBlock = -1).
                 var region = MakeCube(_pointToLocation1, radii, hollow);
@@ -3028,7 +3003,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -3072,15 +3047,8 @@ namespace DNA.CastleMinerZ.UI
                 bool hollow = args.Length > 4 && args[4].Equals("true", StringComparison.OrdinalIgnoreCase);
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeTriangularPrism(Vector3 pos, int length, int width, int height, bool hollow, int ignoreBlock = -1).
                 var region = MakeTriangularPrism(_pointToLocation1, length, width, height, hollow);
@@ -3093,7 +3061,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -3136,15 +3104,8 @@ namespace DNA.CastleMinerZ.UI
                 int height = args.Length > 3 && int.TryParse(args[3], out int h) ? h : radii;
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeSphere(Vector3 pos, double radiusX, double radiusY, double radiusZ, bool hollow, int ignoreBlock = -1).
                 var region = MakeSphere(_pointToLocation1, radii, height, radii, hollow);
@@ -3157,7 +3118,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -3199,15 +3160,8 @@ namespace DNA.CastleMinerZ.UI
                 bool hollow = args.Length > 2 && args[2].Equals("true", StringComparison.OrdinalIgnoreCase);
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakePyramid(Vector3 pos, int size, bool hollow, int ignoreBlock = -1).
                 var region = MakePyramid(_pointToLocation1, size, hollow);
@@ -3220,7 +3174,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -3263,15 +3217,8 @@ namespace DNA.CastleMinerZ.UI
                 bool hollow = args.Length > 3 && args[3].Equals("true", StringComparison.OrdinalIgnoreCase);
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeCone(Vector3 pos, double radiusX, double radiusZ, int height, bool hollow, double thickness, int ignoreBlock = -1).
                 var region = MakeCone(_pointToLocation1, radii, radii, height, hollow, 1);
@@ -3284,7 +3231,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -3328,15 +3275,8 @@ namespace DNA.CastleMinerZ.UI
                 bool hollow = args.Length > 3 && args[3].Equals("true", StringComparison.OrdinalIgnoreCase);
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeCylinder(Vector3 pos, double radiusX, double radiusZ, int height, bool hollow, int ignoreBlock = -1).
                 var region = MakeCylinder(_pointToLocation1, radii, radii, height, hollow);
@@ -3349,7 +3289,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -3392,15 +3332,8 @@ namespace DNA.CastleMinerZ.UI
                 bool squared = args.Length > 3 && args[3].Equals("true", StringComparison.OrdinalIgnoreCase);
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeDiamond(Vector3 pos, int size, bool hollow, int ignoreBlock = -1).
                 var region = MakeDiamond(_pointToLocation1, radii, hollow, squared);
@@ -3413,7 +3346,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -3455,15 +3388,8 @@ namespace DNA.CastleMinerZ.UI
                 bool hollow = args.Length > 2 && args[2].Equals("true", StringComparison.OrdinalIgnoreCase);
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeRing(Vector3 pos, double radius, bool hollow, int ignoreBlock = -1).
                 var region = MakeRing(_pointToLocation1, radius, hollow);
@@ -3476,7 +3402,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -3519,15 +3445,8 @@ namespace DNA.CastleMinerZ.UI
                 int space = int.TryParse(args[2], out int s) ? s : 1;
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeRing(Vector3 pos, double radius, bool hollow, int ignoreBlock = -1).
                 HashSet<Vector3> region = new HashSet<Vector3>();
@@ -3542,7 +3461,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -3611,15 +3530,8 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
@@ -3638,10 +3550,10 @@ namespace DNA.CastleMinerZ.UI
                     // Check if output is -1, use random block from input.
                     int blockToUse = block;
                     if (block == -1)
-                        blockToUse = GetRandomBlockFromPattern(blockPattern);
+                        blockToUse = GetRandomBlockFromPattern(blockPatternNumbers);
                     else
                         if (blockToUse < BlockIDValues.MinID || blockToUse > BlockIDValues.MaxID) // Ensure the returning value is valid.
-                            blockToUse = GetRandomBlockFromPattern(blockPattern);
+                            blockToUse = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != blockToUse)
@@ -4098,17 +4010,10 @@ namespace DNA.CastleMinerZ.UI
                         {
                             string defaultBlock = !string.IsNullOrEmpty(_brushBlockPattern) ? _brushBlockPattern : "1";
                             string blockPattern = args.Length > 1 && !string.IsNullOrEmpty(args[1]) ? args[1] : defaultBlock;
-                            
-                            // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                            blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
 
-                            // Make sure the input is within the min/max.
-                            int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                            if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                            {
-                                Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                                return;
-                            }
+                            // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
+                            int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                            if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                             _brushItem = GetUsersHeldItem();                                                   // Or use 'WandItemID'.
                             _brushBlockPattern = blockPattern;
@@ -4144,15 +4049,8 @@ namespace DNA.CastleMinerZ.UI
                             string blockPattern = args.Length > 1 && !string.IsNullOrEmpty(args[1]) ? args[1] : defaultBlock;
 
                             // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                            blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                            // Make sure the input is within the min/max.
-                            int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                            if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                            {
-                                Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                                return;
-                            }
+                            int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                            if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                             _brushBlockPattern = blockPattern;
                             // Console.WriteLine($"Brush block set to: {_brushBlockPattern}");
@@ -4363,22 +4261,10 @@ namespace DNA.CastleMinerZ.UI
                     basePosition = _pointToLocation1;
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                searchPattern = (searchPattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern);
-                replacePattern = (replacePattern == "all") ? "all" : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern);
-
-                // Make sure the input is within the min/max.
-                int[] searchPatternNumbers = (searchPattern == "all") ? new int[1] : (!string.IsNullOrEmpty(searchPattern)) ? searchPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (searchPatternNumbers.Length == 0 || searchPatternNumbers.Min() < BlockIDValues.MinID || searchPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
-                int[] replacePatternNumbers = (replacePattern == "all") ? new int[1] : (!string.IsNullOrEmpty(replacePattern)) ? replacePattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (replacePatternNumbers.Length == 0 || replacePatternNumbers.Min() < BlockIDValues.MinID || replacePatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] searchPatternNumbers = (searchPattern == "all") ? new int[1] : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern, BlockIDValues);
+                if (searchPattern != "all" && searchPatternNumbers.Length == 0) return;   // Make sure the input is within the min/max.
+                int[] replacePatternNumbers = (replacePattern == "all") ? new int[1] : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern, BlockIDValues);
+                if (replacePattern != "all" && replacePatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Get the shortest distance from the world boundaries.
                 int furthestDistance = (int)Math.Max(Math.Abs(basePosition.Y - WorldHeights.MaxY), Math.Abs(basePosition.Y - WorldHeights.MinY));
@@ -4398,7 +4284,7 @@ namespace DNA.CastleMinerZ.UI
                 if (searchPattern == "all")
                     SaveUndo(region);
                 else
-                    SaveUndo(region, int.Parse(searchPattern));
+                    SaveUndo(region, saveBlock: searchPatternNumbers);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -4408,11 +4294,11 @@ namespace DNA.CastleMinerZ.UI
                     int currentBlock = GetBlockFromLocation(blockLocation);
 
                     // Check if the current block is a block to replace.
-                    if ((searchPattern == "all" && currentBlock != AirID) || currentBlock.ToString() == searchPattern) // Make sure not to replace 'air' when using 'all' mode.
+                    if ((searchPattern == "all" && currentBlock != AirID) || searchPatternNumbers.Contains(currentBlock)) // Make sure not to replace 'air' when using 'all' mode.
                     {
                         // Get random block from input.
                         HashSet<int> excludedBlocks = new HashSet<int> { AirID, 26 }; // IDs to exclude. Block ID 26 'Torch' crashes.
-                        int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePattern);
+                        int replaceBlock = (replacePattern == "all") ? GetRandomBlock(excludedBlocks) : GetRandomBlockFromPattern(replacePatternNumbers);
 
                         // Place block if it doesn't already exist. (improves the performance).
                         if (GetBlockFromLocation(blockLocation) != replaceBlock)
@@ -4460,15 +4346,8 @@ namespace DNA.CastleMinerZ.UI
                     basePosition = _pointToLocation1;
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                blockPattern = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern);
-
-                // Make sure the input is within the min/max.
-                int[] blockPatternNumbers = (!string.IsNullOrEmpty(blockPattern)) ? blockPattern.Split(',').Select(int.Parse).ToArray() : new int[0];
-                if (blockPatternNumbers.Length == 0 || blockPatternNumbers.Min() < BlockIDValues.MinID || blockPatternNumbers.Max() > BlockIDValues.MaxID)
-                {
-                    Console.WriteLine($"Block IDs are out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
-                    return;
-                }
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeSnow(Vector3 center, int radius).
                 var region = MakeSnow(basePosition, radius);
@@ -4482,7 +4361,7 @@ namespace DNA.CastleMinerZ.UI
                 foreach (Vector3 blockLocation in region)
                 {
                     // Get random block from input.
-                    int block = GetRandomBlockFromPattern(blockPattern);
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
@@ -4767,7 +4646,7 @@ namespace DNA.CastleMinerZ.UI
                     // Save the existing region and clear the upcoming redo.
                     // If replacemode is enabled, do not save the entire region, only the effected blocks.
                     if (_brushReplaceMode)
-                        SaveUndo(ExtractVector3HashSet(region), saveBlock: cursorBlock);
+                        SaveUndo(ExtractVector3HashSet(region), saveBlock: new int[] { cursorBlock });
                     else
                         SaveUndo(ExtractVector3HashSet(region));
                     ClearRedo();

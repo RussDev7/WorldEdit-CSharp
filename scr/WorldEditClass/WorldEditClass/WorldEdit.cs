@@ -59,6 +59,7 @@ public class WorldEdit
     /// 'GetUsersHeldItem'
     /// 'GetBlockFromLocation'
     /// 'PlaceBlock'
+    /// 'DropItem'
     /// 'TeleportUser'
     /// 
     /// </summary>
@@ -83,9 +84,9 @@ public class WorldEdit
     public static (int MinID,  int MaxID)   BlockIDValues = (0, 93);
     public static (int WidthX, int LengthZ) ChunkSize     = (24, 24);
     public static int WandItemID = 39;
-    public static int LeavesID = 18;
-    public static int LogID = 17;
-    public static int AirID = 0;
+    public static int LeavesID   = 18;
+    public static int LogID      = 17;
+    public static int AirID      = 0;
 
     #region Definitions
 
@@ -102,6 +103,18 @@ public class WorldEdit
     public static Stack<HashSet<Tuple<Vector3, int, int>>> RedoStack = new Stack<HashSet<Tuple<Vector3, int, int>>>();
     public static HashSet<Tuple<Vector3, int>> copiedRegion = new HashSet<Tuple<Vector3, int>>();
     public static HashSet<Tuple<Vector3, int>> copiedStackRegion = new HashSet<Tuple<Vector3, int>>();
+
+    /// <summary>
+    /// 
+    /// Maximum normalized Levenshtein distance (0.0–1.0) allowed when doing a fuzzy enum match.
+    /// 
+    /// A lower value means only very close matches will succeed; a higher value allows
+    /// more “fuzziness.” Default is 0.4 (i.e. 40% different).
+    /// 
+    /// You can tweak this in code to make your mapping more or less permissive.
+    /// 
+    /// </summary>
+    private static readonly double _maxDistanceThreshold = 0.4;
 
     public class Region
     {
@@ -145,8 +158,8 @@ public class WorldEdit
 
     #endregion
 
-    // You need to implement 'GetUsersCursorLocation', 'GetUsersLocation', 'GetUsersHeldItem', 'GetBlockFromLocation', 'PlaceBlock', and 'TeleportUser' support manually!
-    #region World Utilities
+    // You need to implement 'GetUsersCursorLocation', 'GetUsersLocation', 'GetUsersHeldItem', 'GetBlockFromLocation', 'PlaceBlock', 'DropItem', and 'TeleportUser' support manually!
+    #region Class: World Utilities
 
     public class WorldUtils
     {
@@ -173,6 +186,14 @@ public class WorldEdit
             (DNA.Net.GamerServices.LocalNetworkGamer)DNA.CastleMinerZ.CastleMinerZGame.Instance.LocalPlayer.Gamer,
             new DNA.IntVector3((int)location.X, (int)location.Y, (int)location.Z),
             (DNA.CastleMinerZ.Terrain.BlockTypeEnum)block
+        );
+
+        // Implement a feature for dropping an item ID at a specified vector3 (XYZ) location.
+        public static void DropItem(Vector3 location, int item) => DNA.CastleMinerZ.PickupManager.Instance.CreatePickup(
+            DNA.CastleMinerZ.Inventory.InventoryItem.CreateItem((DNA.CastleMinerZ.Inventory.InventoryItemIDs)item, 1),
+            location,
+            true,
+            false
         );
 
         // Implement a feature for teleporting the user to a specified vector3 (XYZ) location.
@@ -291,6 +312,18 @@ public class WorldEdit
 
                 int result = BitConverter.ToInt32(randomNumber, 0);
                 return numbers[Math.Abs(result % numbers.Length)];
+            }
+        }
+
+        public static int GetRandomBlockFromPattern(int[] pattern)
+        {
+            using (RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider())
+            {
+                byte[] randomNumber = new byte[4];
+                rng.GetBytes(randomNumber);
+
+                int result = BitConverter.ToInt32(randomNumber, 0);
+                return pattern[Math.Abs(result % pattern.Length)];
             }
         }
 
@@ -526,60 +559,6 @@ public class WorldEdit
         }
         #endregion
 
-        #region Enum Helpers
-
-        public static string GetClosestEnumValues<T>(string input) where T : struct, Enum
-        {
-            var enumNames = Enum.GetNames(typeof(T));
-            var enumValues = Enum.GetValues(typeof(T)).Cast<int>().ToArray();
-
-            return string.Join(",", input.Split(',')
-                .Select(name => name.Trim())
-                .Where(name => !string.IsNullOrEmpty(name))
-                .Select(name => ProcessEnumInput<T>(name, enumNames, enumValues))
-                .Select(value => value.ToString()));
-        }
-
-        private static int ProcessEnumInput<T>(string input, string[] enumNames, int[] enumValues) where T : struct, Enum
-        {
-            if (int.TryParse(input, out int intValue) && enumValues.Contains(intValue))
-            {
-                return intValue; // If input is a valid enum integer, return it directly.
-            }
-
-            // If the input is a string, find the closest match.
-            return FindClosestEnumValue<T>(input, enumNames);
-        }
-
-        private static int FindClosestEnumValue<T>(string input, string[] enumNames) where T : struct, Enum
-        {
-            var closestMatch = enumNames.OrderBy(name => GetLevenshteinDistance(name, input)).First();
-
-            if (Enum.TryParse(closestMatch, true, out T result))
-            {
-                return Convert.ToInt32(result);
-            }
-
-            return BlockIDValues.MinID; // Return the minimum ID (or invalid value) if not found.
-        }
-
-        // Levenshtein Distance Algorithm.
-        private static int GetLevenshteinDistance(string s1, string s2)
-        {
-            int len1 = s1.Length;
-            int len2 = s2.Length;
-            var dp = new int[len1 + 1, len2 + 1];
-
-            for (int i = 0; i <= len1; i++)
-                for (int j = 0; j <= len2; j++)
-                    if (i == 0) dp[i, j] = j;
-                    else if (j == 0) dp[i, j] = i;
-                    else dp[i, j] = Math.Min(Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1), dp[i - 1, j - 1] + (s1[i - 1] == s2[j - 1] ? 0 : 1));
-
-            return dp[len1, len2];
-        }
-        #endregion
-
         #region XnaPerlinNoise Helper
 
         public class XnaPerlinNoise
@@ -732,10 +711,192 @@ public class WorldEdit
 
     /// <summary>
     /// 
+    /// Custom comparison class for mapping and comparing enum values by name or numeric value.
+    /// 
+    /// </summary>
+    #region Class: Enum Mapper
+
+    public static class EnumMapper
+    {
+        #region Enum Compare Functions
+
+        // Try to map comma sepererated input strings onto their "closest" members of enum T, returning their numeric values as an integer array.
+        public static int[] GetClosestEnumValues<T>(
+            string input,
+            (int MinID, int MaxID)? rangeIDs = null)
+            where T : struct, Enum
+        {
+            var enumNames = Enum.GetNames(typeof(T));
+            var enumValues = Enum.GetValues(typeof(T)).Cast<int>().ToArray();
+
+            int[] enumIDs = input
+                .Split(',')
+                .Select(name => name.Trim())
+                .Where(name => name.Length > 0)
+                .Select(name => ProcessEnumInput<T>(name, enumNames, enumValues, rangeIDs))
+                .ToArray();
+
+            // Check if the array is empty or out of range.
+            bool isUnderMin = (!rangeIDs.Equals(default)) && enumIDs.Min() < rangeIDs.Value.MinID;
+            bool isOverMax = (!rangeIDs.Equals(default)) && enumIDs.Max() > rangeIDs.Value.MaxID;
+            if (enumIDs.Length == 0 || isUnderMin || isOverMax)
+            {
+                Console.WriteLine($"ERROR: Block ID(s) out of range. (min: {BlockIDValues.MinID}, max: {BlockIDValues.MaxID})");
+                return new int[0];
+            }
+
+            return enumIDs;
+        }
+
+        // Try to map a value of one enum onto a "closest" value of another enum.
+        public static bool TryMapEnum<TSource, TDest>(
+            TSource sourceValue,
+            out TDest destValue,
+            string suffix = "Block")
+            where TSource : struct, Enum
+            where TDest : struct, Enum
+        {
+            // Reject any unmapped or out-of-range source IDs.
+            int raw = Convert.ToInt32(sourceValue);
+            if (!Enum.IsDefined(typeof(TSource), raw))
+            {
+                destValue = default;
+                return false;
+            }
+
+            string name = sourceValue.ToString();
+
+            // If exact parse with suffex, return true.
+            if (Enum.TryParse<TDest>(name + suffix, ignoreCase: true, out destValue))
+                return true;
+
+            // If exact parse, return true.
+            if (Enum.TryParse<TDest>(name, ignoreCase: true, out destValue))
+                return true;
+
+            // If starts-with, return true.
+            var allNames = Enum.GetNames(typeof(TDest));
+            var starts = allNames
+                .Where(n => n.StartsWith(name, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            if (starts.Length == 1)
+            {
+                destValue = (TDest)Enum.Parse(typeof(TDest), starts[0], ignoreCase: true);
+                return true;
+            }
+
+            // If fuzzy‐matched by normalized Levenshtein distance, return true.
+
+            /*
+            destValue = Enum.GetNames(typeof(TDest))
+                .Select(n => new
+                {
+                    Name = n,
+                    Score = GetLevenshteinDistance(n, name)
+                          / (double)Math.Max(n.Length, name.Length)
+                })
+                .OrderBy(x => x.Score)
+                .Select(x => (TDest)Enum.Parse(typeof(TDest), x.Name))
+                .First();
+            */
+
+            var scored = Enum.GetNames(typeof(TDest))
+                            .Select(n => new {
+                                Name = n,
+                                Score = GetLevenshteinDistance(n, name)
+                                      / (double)Math.Max(n.Length, name.Length)
+                            })
+                            .OrderBy(x => x.Score)
+                            .ToArray();
+
+            // If the best match is too far, fail.
+            if (scored[0].Score > _maxDistanceThreshold)
+            {
+                destValue = default;
+                return false;
+            }
+
+            // Otherwise, accept the best match:
+            destValue = (TDest)Enum.Parse(typeof(TDest), scored[0].Name, true);
+            return true;
+        }
+
+        // Try to map an input string onto the "closest" member of enum T.
+        public static bool GetClosestEnumValues<T>(string input, out T result) where T : struct, Enum
+        {
+            // If exact parse, return true.
+            if (Enum.TryParse(input, ignoreCase: true, out result))
+                return true;
+
+            // Build a list of names & values.
+            var names = Enum.GetNames(typeof(T));
+            var values = Enum.GetValues(typeof(T)).Cast<int>().ToArray();
+
+            // Find closest name by Levenshtein.
+            string bestName = names
+                .OrderBy(n => GetLevenshteinDistance(n, input))
+                .First();
+
+            // Parse that back into T.
+            result = (T)Enum.Parse(typeof(T), bestName, ignoreCase: true);
+            return true;
+        }
+        #endregion
+
+        #region Algorithm Helpers
+
+        private static int ProcessEnumInput<T>(string input, string[] enumNames, int[] enumValues, (int MinID, int MaxID)? rangeIDs) where T : struct, Enum
+        {
+            // If input is a valid enum integer, return it directly.
+            if (int.TryParse(input, out int intValue) && enumValues.Contains(intValue))
+                return intValue;
+
+            // If range was specified and input is not a valid enum integer, return an invalid value.
+            if (!rangeIDs.Equals(default) && !enumValues.Contains(intValue))
+                return rangeIDs.Value.MinID - 1;
+
+            // If the input is a string, find the closest match.
+            return FindClosestEnumValue<T>(input, enumNames, rangeIDs);
+        }
+
+        private static int FindClosestEnumValue<T>(string input, string[] enumNames, (int MinID, int MaxID)? rangeIDs) where T : struct, Enum
+        {
+            var closestMatch = enumNames.OrderBy(name => GetLevenshteinDistance(name, input)).First();
+
+            if (Enum.TryParse(closestMatch, true, out T result))
+            {
+                return Convert.ToInt32(result);
+            }
+
+            // Return the minimum ID (or invalid value) if not found.
+            return (!rangeIDs.Equals(default)) ? rangeIDs.Value.MinID - 1 : AirID;
+        }
+
+        // Levenshtein Distance Algorithm.
+        private static int GetLevenshteinDistance(string s1, string s2)
+        {
+            int len1 = s1.Length;
+            int len2 = s2.Length;
+            var dp = new int[len1 + 1, len2 + 1];
+
+            for (int i = 0; i <= len1; i++)
+                for (int j = 0; j <= len2; j++)
+                    if (i == 0) dp[i, j] = j;
+                    else if (j == 0) dp[i, j] = i;
+                    else dp[i, j] = Math.Min(Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1), dp[i - 1, j - 1] + (s1[i - 1] == s2[j - 1] ? 0 : 1));
+
+            return dp[len1, len2];
+        }
+        #endregion
+    }
+    #endregion
+
+    /// <summary>
+    /// 
     /// Custom evaluator class for parsing math expressions.
     /// 
     /// </summary>
-    #region Math Expression Parsing Utilities
+    #region Class: Math Expression Parsing Utilities
 
     public enum TokenType { Number, Operator, Function, Variable, LeftParen, RightParen, Comma }
 
@@ -1070,12 +1231,16 @@ public class WorldEdit
     }
 
     // Get the existing block data and push it to the undo stack.
-    public static void SaveUndo(HashSet<Vector3> region, int saveBlock = -1, int ignoreBlock = -1)
+    public static void SaveUndo(HashSet<Vector3> region, int[] saveBlock = null, int[] ignoreBlock = null)
     {
         HashSet<Tuple<Vector3, int, int>> actionsBuilder = new HashSet<Tuple<Vector3, int, int>>();
         bool wasGUIDCreated = false; // Prevents making a new guid on non-duplicate hashsets.
         bool useForAll = false;      // Skip further stack checking to increase performance.
         int randomGUID = 0;          // Define a starting integer.
+
+        // Treat empty the same as null.
+        if (saveBlock?.Length > 0) saveBlock = null;
+        if (ignoreBlock?.Length > 0) ignoreBlock = null;
 
         // Iterate through all vectors within the region.
         foreach (Vector3 i in region)
@@ -1084,10 +1249,10 @@ public class WorldEdit
             int worldBlock = GetBlockFromLocation(i);
 
             // If a save block was specified, only save the locations of that block id.
-            if (saveBlock != -1 && worldBlock != saveBlock) continue;
+            if (saveBlock != null && !saveBlock.Contains(worldBlock)) continue;
 
             // If ignore block was specified, skip locations matching the block id.
-            if (ignoreBlock != -1 && worldBlock == ignoreBlock) continue;
+            if (ignoreBlock != null && ignoreBlock.Contains(worldBlock)) continue;
 
             // Define new data.
             var vectorData = new Tuple<Vector3, int, int>(i, worldBlock, 0);
@@ -3126,7 +3291,7 @@ public class WorldEdit
 
     #region Matrix
 
-    public static HashSet<Tuple<Vector3, int>> MakeMatrix(Vector3 pos, int radius, int spacing, bool enableSnow, string optionalBlockPattern)
+    public static HashSet<Tuple<Vector3, int>> MakeMatrix(Vector3 pos, int radius, int spacing, bool enableSnow, int[] optionalBlockPattern)
     {
         HashSet<Tuple<Vector3, int>> maxtrixBlocks = new HashSet<Tuple<Vector3, int>>();
 
@@ -3142,10 +3307,23 @@ public class WorldEdit
         int startZ = Convert.ToInt32(pos.Z) - (radius * 3) - spacing + 1;
         int endZ = (radius * 3) + Convert.ToInt32(pos.Z) + 1;
 
+        // Find how far 'down' the copy goes, relative to its anchor.
+        int minOffsetY = copiedRegion.Min(b => (int)b.Item1.Y);
+
         for (int x = startX; x < endX; x += spacing)
         {
             for (int z = startZ; z < endZ; z += spacing)
             {
+                // Adjust Y position based on terrain height if snow is enabled.
+                int baseY;
+                if (enableSnow)
+                {
+                    int groundY = GetTerrainHeight(x, z); // Get the ground height for this point.
+                    baseY = groundY - minOffsetY;         // Offset the copy up so its lowest block sits on ground.
+                }
+                else
+                    baseY = Convert.ToInt32(pos.Y);
+
                 foreach (var blockData in copiedRegion)
                 {
                     // Parse block data.
@@ -3154,14 +3332,13 @@ public class WorldEdit
                     int offsetZ = (int)blockData.Item1.Z;
                     int blockId = blockData.Item2;
 
-                    // Adjust Y position based on terrain height if snow is enabled.
-                    int finalY = enableSnow ? GetTerrainHeight(x + offsetX, z + offsetZ) : Convert.ToInt32(pos.Y) + offsetY;
+                    int finalY = baseY + offsetY;
 
                     // Calculate the final position.
                     Vector3 blockPosition = new Vector3(x + offsetX, finalY, z + offsetZ);
 
                     // Get the block id.
-                    if (!string.IsNullOrEmpty(optionalBlockPattern))
+                    if (optionalBlockPattern.Length > 0)
                     {
                         // Overwrite block id value with a specified value.
                         blockId = GetRandomBlockFromPattern(optionalBlockPattern);
@@ -3177,7 +3354,7 @@ public class WorldEdit
     }
     private static int GetTerrainHeight(int x, int z)
     {
-        // Loop through each Y-level from 62 to -62, checking for non-empty blocks (e.g., terrain).
+        // Loop through each Y-level from top to bottom, checking for non-empty blocks (e.g., terrain).
         for (int y = WorldHeights.MaxY; y > (WorldHeights.MinY - 1); y--)
         {
             // Create a vector for the world coordinates at each y-level.
