@@ -233,24 +233,24 @@ namespace DNA.CastleMinerZ.UI
             ("schematic [load] (loadAir)",                                             "Load a schematic into your clipboard."),
             ("copy",                                                                   "Copy the selection to the clipboard."),
             ("cut",                                                                    "Cut the selection to the clipboard."),
-            ("paste (useAir) (pos1)",                                                  "Paste the clipboard’s contents."),
+            ("paste (useAir) (pos1)",                                                  "Paste the clipboard's contents."),
             ("rotate (rotateY) (rotateX) (rotateZ)",                                   "Rotate the contents of the clipboard."),
             ("flip (direction)",                                                       "Flip the contents of the clipboard across the origin."),
             ("clearclipboard",                                                         "Clear your clipboard."),
 
             // Tool Commands.
-            ("tool [on/off] [/command],     " +
-                     "tool command [/command]",                                            "Binds a tool to the item in your hand."),
+            ("tool [on/off] [/command], "              +
+                 "tool command [/command]",                                            "Binds a tool to the item in your hand."),
 
             // Brush Commands.
-            ("brush [on/off] (block(,array)) (size),     " +
-                     "brush block [block(,array)],     " +
-                     "brush shape [shape],     " +
-                     "brush size [size],     " +
-                     "brush height [height],     " +
-                     "brush hollow [true/false],     " +
-                     "brush replace [true/false],     " +
-                     "brush rapid [true/false]",                                           "Brushing commands."),
+            ("brush [on/off] (block(,array)) (size), " +
+                 "brush block [block(,array)], "       +
+                 "brush shape [shape], "               +
+                 "brush size [size], "                 +
+                 "brush height [height], "             +
+                 "brush hollow [true/false], "         +
+                 "brush replace [true/false], "        +
+                 "brush rapid [true/false]",                                           "Brushing commands."),
 
             // Utility Commands.
             ("removenear [radii] (pos1)",                                              "Remove all blocks within a cylindrical radii."),
@@ -1056,7 +1056,7 @@ namespace DNA.CastleMinerZ.UI
             int maxX = minX + sizeX - 1;
             int maxZ = minZ + sizeZ - 1;
 
-            // Update selection – full vertical column.
+            // Update selection - full vertical column.
             _pointToLocation1 = new Vector3(minX, WorldHeights.MinY, minZ);
             _pointToLocation2 = new Vector3(maxX, WorldHeights.MaxY, maxZ);
 
@@ -1161,7 +1161,7 @@ namespace DNA.CastleMinerZ.UI
                     direction = parsedDir;
                 }
 
-                // Work with *min* and *max* so we don’t care which corner is pos1/pos2.
+                // Work with *min* and *max* so we don't care which corner is pos1/pos2.
                 Vector3 min = Vector3.Min(_pointToLocation1, _pointToLocation2);
                 Vector3 max = Vector3.Max(_pointToLocation1, _pointToLocation2);
 
@@ -1190,7 +1190,7 @@ namespace DNA.CastleMinerZ.UI
                 // Validate that we still have a non-negative region.
                 if (min.X > max.X || min.Y > max.Y || min.Z > max.Z)
                 {
-                    Console.WriteLine("ERROR: Contract amount too large – selection would invert/vanish.");
+                    Console.WriteLine("ERROR: Contract amount too large Â– selection would invert/vanish.");
                     return;
                 }
 
@@ -1638,7 +1638,7 @@ namespace DNA.CastleMinerZ.UI
                     direction = parsedDir;
                 }
 
-                // Work with *min* and *max* so we don’t care which corner was set first.
+                // Work with *min* and *max* so we don't care which corner was set first.
                 Vector3 min = Vector3.Min(_pointToLocation1, _pointToLocation2);
                 Vector3 max = Vector3.Max(_pointToLocation1, _pointToLocation2);
 
@@ -2259,7 +2259,7 @@ namespace DNA.CastleMinerZ.UI
                     // Assume the user provided both a direction and a useAir flag.
                     if (!Enum.TryParse<Direction>(args[1], true, out stackDirection))
                     {
-                        // If the direction string doesn’t match, fallback to the cursor direction.
+                        // If the direction string doesn't match, fallback to the cursor direction.
                         Vector3 cursorLocation = GetUsersCursorLocation();
                         stackDirection = GetFacingDirection(_pointToLocation1, cursorLocation);
                     }
@@ -2360,7 +2360,7 @@ namespace DNA.CastleMinerZ.UI
                     // Assume the user provided both a direction and a useAir flag.
                     if (!Enum.TryParse<Direction>(args[1], true, out stretchDirection))
                     {
-                        // If the direction string doesn’t match, fallback to the cursor direction.
+                        // If the direction string doesn't match, fallback to the cursor direction.
                         Vector3 cursorLocation = GetUsersCursorLocation();
                         stretchDirection = GetFacingDirection(_pointToLocation1, cursorLocation);
                     }
@@ -4697,4 +4697,5 @@ namespace DNA.CastleMinerZ.UI
         /// END OF REMOVAL.
         /// </summary>
     }
+
 }
