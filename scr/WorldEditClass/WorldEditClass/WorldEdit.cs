@@ -302,17 +302,16 @@ public class WorldEdit
 
         public static int GetRandomBlockFromPattern(string pattern)
         {
-            if (!pattern.Contains(',')) { return int.Parse(pattern); }
-            int[] numbers = Array.ConvertAll(pattern.Split(','), int.Parse);
+            // Turn the pattern into IDs.
+            // Examples that work: "12", "12,34", "log", "log,glass,12".
+            int[] ids = EnumMapper.GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(pattern, BlockIDValues);
 
-            using (RNGCryptoServiceProvider rng = new RNGCryptoServiceProvider())
-            {
-                byte[] randomNumber = new byte[4];
-                rng.GetBytes(randomNumber);
+            // If nothing valid was found, fail fast so caller can show an error.
+            if (ids == null || ids.Length == 0)
+                throw new FormatException($"Invalid block pattern: {pattern}");
 
-                int result = BitConverter.ToInt32(randomNumber, 0);
-                return numbers[Math.Abs(result % numbers.Length)];
-            }
+            // Reuse the int[] version to actually pick the random ID.
+            return GetRandomBlockFromPattern(ids);
         }
 
         public static int GetRandomBlockFromPattern(int[] pattern)
@@ -847,13 +846,14 @@ public class WorldEdit
 
         private static int ProcessEnumInput<T>(string input, string[] enumNames, int[] enumValues, (int MinID, int MaxID)? rangeIDs) where T : struct, Enum
         {
-            // If input is a valid enum integer, return it directly.
-            if (int.TryParse(input, out int intValue) && enumValues.Contains(intValue))
-                return intValue;
-
-            // If range was specified and input is not a valid enum integer, return an invalid value.
-            if (!rangeIDs.Equals(default) && !enumValues.Contains(intValue))
-                return rangeIDs.Value.MinID - 1;
+            // Try to read the input as a number.
+            if (int.TryParse(input, out int intValue))
+            {
+                // Numeric: Accept only if defined (or mark invalid).
+                return enumValues.Contains(intValue)
+                    ? intValue
+                    : (rangeIDs.HasValue ? rangeIDs.Value.MinID - 1 : AirID);
+            }
 
             // If the input is a string, find the closest match.
             return FindClosestEnumValue<T>(input, enumNames, rangeIDs);
