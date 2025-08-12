@@ -44,13 +44,13 @@ namespace DNA.CastleMinerZ.UI
     {
         #region Variables
 
-        private bool _wandEnabled;
-        private bool _toolEnabled;
-        private bool _brushEnabled;
+        private bool   _wandEnabled;
+        private bool   _toolEnabled;
+        private bool   _brushEnabled;
 
         private string _toolCommand = "";
-        private int _toolItem = WandItemID;  // Use the wand item as a placeholder.
-        private int _brushItem = WandItemID; // Use the wand item as a placeholder.
+        private int    _toolItem    = WandItemID; // Use the wand item as a placeholder.
+        private int    _brushItem   = WandItemID; // Use the wand item as a placeholder.
 
         #endregion
 
@@ -288,7 +288,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/brightness")]
         private static void ExecuteBrightness(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /brightness [amount]");
                 return;
@@ -361,7 +361,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/time")]
         private static void ExecuteTime(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /time [time]");
                 return;
@@ -416,7 +416,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/cui")]
         private static void ExecuteCUI(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /cui [on/off]");
                 return;
@@ -427,29 +427,17 @@ namespace DNA.CastleMinerZ.UI
                 switch (args[0].ToLower())
                 {
                     case "on":
-                        if (args.Length > 0 && args.Length < 2) // Valid: 0+; 1-2.
-                        {
-                            _enableCLU = true;
-                            Console.WriteLine("Selections are now shown.");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]");
-                            return;
-                        }
+                        if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
+
+                        _enableCLU = true;
+                        Console.WriteLine("Selections are now shown.");
                         break;
 
                     case "off":
-                        if (args.Length > 0 && args.Length < 2) // Valid: 0+; 1-2.
-                        {
-                            _enableCLU = false;
-                            Console.WriteLine("Selections are now hidden.");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]");
-                            return;
-                        }
+                        if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
+
+                        _enableCLU = false;
+                        Console.WriteLine("Selections are now hidden.");
                         break;
 
                     default:
@@ -885,7 +873,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/up")]
         private static async void ExecuteUp(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /up [amount]");
                 return;
@@ -924,7 +912,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/down")]
         private static async void ExecuteDown(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /down [amount]");
                 return;
@@ -965,7 +953,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/pos")]
         private static void ExecutePos(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /pos [pos1/pos2..]");
                 return;
@@ -999,7 +987,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/hpos")]
         private static void ExecuteHpos(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /hpos [hpos1/hpos2..]");
                 return;
@@ -1070,9 +1058,9 @@ namespace DNA.CastleMinerZ.UI
         #region /wand
 
         [Command("/wand")]
-        private void ExecuteWand(string[] args) // Don't give 'static' for tool command.
+        private void ExecuteWand(string[] args) // Don't give 'static' for wand command.
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /wand [on/off]");
                 return;
@@ -1083,41 +1071,29 @@ namespace DNA.CastleMinerZ.UI
                 switch (args[0].ToLower())
                 {
                     case "on":
-                        if (args.Length > 0 && args.Length < 2) // Valid: 0+; 1-2.
-                        {
-                            // Give the user a compass.
-                            /*
-                            _game.LocalPlayer.PlayerInventory.AddInventoryItem(
-                                DNA.CastleMinerZ.Inventory.InventoryItem.CreateItem(WandItemID, 1),
-                                false
-                            );
-                            */
+                        if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /wand [on/off]"); return; }
 
-                            Timer wandTimer = new Timer() { Interval = 1 };
-                            wandTimer.Tick += WorldWand_Tick;
-                            wandTimer.Start();
+                        // Give the user a compass.
+                        /*
+                        _game.LocalPlayer.PlayerInventory.AddInventoryItem(
+                            DNA.CastleMinerZ.Inventory.InventoryItem.CreateItem(WandItemID, 1),
+                            false
+                        );
+                        */
 
-                            _wandEnabled = true;
-                            Console.WriteLine("Wand Activated!");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Missing parameter. Usage: /wand [on/off]");
-                            return;
-                        }
+                        Timer wandTimer = new Timer() { Interval = 1 };
+                        wandTimer.Tick += WorldWand_Tick;
+                        wandTimer.Start();
+
+                        _wandEnabled = true;
+                        Console.WriteLine("Wand Activated!");
                         break;
 
                     case "off":
-                        if (args.Length > 0 && args.Length < 2) // Valid: 0+; 1-2.
-                        {
-                            _wandEnabled = false;
-                            Console.WriteLine("Wand Deactivated!");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Missing parameter. Usage: /wand [on/off]");
-                            return;
-                        }
+                        if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /wand [on/off]"); return; }
+
+                        _wandEnabled = false;
+                        Console.WriteLine("Wand Deactivated!");
                         break;
 
                     default:
@@ -1137,7 +1113,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/contract")]
         private static void ExecuteContract(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /contract [amount] (direction)");
                 return;
@@ -1221,7 +1197,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/shift")]
         private static void ExecuteShift(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /shift [amount] (direction)");
                 return;
@@ -1322,7 +1298,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/trim")]
         private static void ExecuteTrim(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /trim [mask block(,array)]");
                 return;
@@ -1428,7 +1404,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/count")]
         private static void ExecuteCount(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /count [find block(,array)]");
                 return;
@@ -1597,7 +1573,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/expand")]
         private static void ExecuteExpand(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /expand [amount(vert)] (direction)");
                 return;
@@ -1692,7 +1668,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/set")]
         private static void ExecuteSet(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /set [block(,array)] (hollow)");
                 return;
@@ -1764,7 +1740,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/line")]
         private static void ExecuteLine(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /line [block(,array)] (thickness)");
                 return;
@@ -1897,7 +1873,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/allex")]
         private static void ExecuteAllExcept(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /allexcept [source block(,array)] (to block(,array))");
                 return;
@@ -1969,7 +1945,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/overlay")]
         private static void ExecuteOverlay(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /overlay [replace block(,array)]");
                 return;
@@ -2027,7 +2003,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/walls")]
         private static void ExecuteWalls(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /walls [block(,array)]");
                 return;
@@ -2133,7 +2109,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/move")]
         private static void ExecuteMove(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /move [amount] (direction)");
                 return;
@@ -2533,7 +2509,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/fill")]
         private static void ExecuteFill(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /fill [block(,array)]");
                 return;
@@ -2591,7 +2567,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/wrap")]
         private static void ExecuteWrap(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /wrap [replace block(,array)] (wrap direction(all)) (exclude direction)");
                 return;
@@ -2753,7 +2729,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/forest")]
         private static void ExecuteForest(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /forest [density] (max height)");
                 return;
@@ -3581,7 +3557,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/schem")]
         private static void ExecuteSchematic(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /schematic [save/load] (useAir)");
                 return;
@@ -3907,7 +3883,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/tool")]
         private void ExecuteTool(string[] args) // Don't give 'static' for tool command.
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /tool [on/off] [/command],\n" +
                                   "    /tool command [/command]"
@@ -3920,49 +3896,29 @@ namespace DNA.CastleMinerZ.UI
                 switch (args[0].ToLower())
                 {
                     case "on":
-                        if (args.Length > 1) // Valid: 2+ 1-3+;
-                        {
-                            _toolCommand = args.Length > 1 ? string.Join(" ", args.Skip(1)) : "/jump";
-                            _toolItem = GetUsersHeldItem();
+                        if (args.Length != 2) { Console.WriteLine("ERROR: Missing parameter. Usage: /tool [on/off] [/command]"); return; }
 
-                            Timer toolTimer = new Timer() { Interval = 1 };
-                            toolTimer.Tick += WorldTool_Tick;
-                            toolTimer.Start();
+                        _toolCommand = args.Length >= 2 ? string.Join(" ", args.Skip(1)) : string.Empty;
+                        _toolItem = GetUsersHeldItem();
 
-                            _toolEnabled = true;
-                            Console.WriteLine($"Tool Activated! Command: {_toolCommand}");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Missing parameter. Usage: /tool [on/off] [/command]");
-                            return;
-                        }
+                        Timer toolTimer = new Timer() { Interval = 1 };
+                        toolTimer.Tick += WorldTool_Tick;
+                        toolTimer.Start();
+
+                        _toolEnabled = true;
+                        Console.WriteLine($"Tool Activated! Command: {_toolCommand}");
                         break;
 
                     case "off":
-                        if (args.Length > 0 && args.Length < 2) // Valid: 0+; 1-2.
-                        {
-                            _toolEnabled = false;
-                            Console.WriteLine("Tool Deactivated!");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Missing parameter. Usage: /tool [on/off] [/command]");
-                            return;
-                        }
+                        _toolEnabled = false;
+                        Console.WriteLine("Tool Deactivated!");
                         break;
 
                     case "command":
-                        if (args.Length > 1) // Valid: 2+ 1-3+;
-                        {
-                            _toolCommand = args.Length > 1 ? string.Join(" ", args.Skip(1)) : "/jump";
-                            Console.WriteLine($"New Tool Command: {_toolCommand}");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Missing parameter. Usage: /tool [on/off] [/command]");
-                            return;
-                        }
+                        if (args.Length != 2) { Console.WriteLine("ERROR: Missing parameter. Usage: /tool [on/off] [/command]"); return; }
+
+                        _toolCommand = args.Length >= 2 ? string.Join(" ", args.Skip(1)) : string.Empty;
+                        Console.WriteLine($"New Tool Command: {_toolCommand}");
                         break;
 
                     default:
@@ -3983,9 +3939,9 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("/brush")]
         [Command("/br")]
-        private void ExecuteBrush(string[] args) // Don't give 'static' for tool command.
+        private void ExecuteBrush(string[] args) // Don't give 'static' for brush command.
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /brush [on/off] (block(,array)) (size),\n" +
                                   "    /brush block [block(,array)],\n" +
@@ -4004,8 +3960,9 @@ namespace DNA.CastleMinerZ.UI
                 switch (args[0].ToLower())
                 {
                     case "on":
-                        if (args.Length > 0 && args.Length < 4) // Valid: 0+; 1-2.
                         {
+                            if (args.Length < 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /brush [on/off] (block(,array)) (size)"); return; }
+
                             string defaultBlock = !string.IsNullOrEmpty(_brushBlockPattern) ? _brushBlockPattern : "1";
                             string blockPattern = args.Length > 1 && !string.IsNullOrEmpty(args[1]) ? args[1] : defaultBlock;
 
@@ -4026,14 +3983,8 @@ namespace DNA.CastleMinerZ.UI
                             brushTimer.Start();
 
                             _brushEnabled = true;
-                            // Console.WriteLine($"Brush Activated! Block set to: {_brushBlockPattern}");
+                            break;
                         }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Missing parameter. Usage: /brush [on/off] (block(,array)) (size)");
-                            return;
-                        }
-                        break;
 
                     case "off":
                         Console.WriteLine("Brush Deactivated!");
@@ -4041,8 +3992,9 @@ namespace DNA.CastleMinerZ.UI
                         return;
 
                     case "block":
-                        if (args.Length > 1 && args.Length < 3) // Valid: 0+; 1.
                         {
+                            if (args.Length != 2)                                              { Console.WriteLine("ERROR: Missing block type. Usage: /brush block [block(,array)]");  return; }
+
                             string defaultBlock = !string.IsNullOrEmpty(_brushBlockPattern) ? _brushBlockPattern : "1";
                             string blockPattern = args.Length > 1 && !string.IsNullOrEmpty(args[1]) ? args[1] : defaultBlock;
 
@@ -4051,91 +4003,43 @@ namespace DNA.CastleMinerZ.UI
                             if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                             _brushBlockPattern = blockPattern;
-                            // Console.WriteLine($"Brush block set to: {_brushBlockPattern}");
+                            break;
                         }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Missing block type. Usage: /brush block [block(,array)]");
-                            return;
-                        }
-                        break;
 
                     case "shape":
-                        if (args.Length > 1 && args.Length < 3 && IsValidBrushShape(args[1].ToLower())) // Valid: 0+; 1.
-                        {
-                            _brushShape = args[1].ToLower();
-                            // Console.WriteLine($"Brush shape set to: {_brushShape}");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Missing shape type. Usage: /brush shape [shape]");
-                            return;
-                        }
+                        if (args.Length != 2 || !IsValidBrushShape(args[1].ToLower()))         { Console.WriteLine("ERROR: Missing shape type. Usage: /brush shape [shape]");          return; }
+
+                        _brushShape = args[1].ToLower();
                         break;
 
                     case "size":
-                        if (args.Length > 1 && args.Length < 3 && int.TryParse(args[1], out int size)) // Valid: 0+; 1.
-                        {
-                            _brushSize = size;
-                            // Console.WriteLine($"Brush size set to: {_brushSize}");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Invalid brush size. Usage: /brush size [size]");
-                            return;
-                        }
+                        if (args.Length != 2 || !int.TryParse(args[1], out int size))          { Console.WriteLine("ERROR: Invalid brush size. Usage: /brush size [size]");            return; }
+
+                        _brushSize = size;
                         break;
 
                     case "height":
-                        if (args.Length > 1 && args.Length < 3 && int.TryParse(args[1], out int height)) // Valid: 0+; 1.
-                        {
-                            _brushHeight = height;
-                            // Console.WriteLine($"Brush height set to: {_brushHeight}");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Invalid brush size. Usage: /brush height [height]");
-                            return;
-                        }
+                        if (args.Length != 2 || !int.TryParse(args[1], out int height))        { Console.WriteLine("ERROR: Invalid brush size. Usage: /brush height [height]");        return; }
+
+                        _brushHeight = height;
                         break;
 
                     case "hollow":
-                        if (args.Length > 1 && args.Length < 3 && bool.TryParse(args[1], out bool hollow)) // Valid: 0+; 1.
-                        {
-                            _brushHollow = hollow;
-                            // Console.WriteLine($"Brush hollow mode set to: {_brushHollow}");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Invalid replace mode. Usage: /brush hollow [true/false]");
-                            return;
-                        }
+                        if (args.Length != 2 || !bool.TryParse(args[1], out bool hollow))      { Console.WriteLine("ERROR: Invalid replace mode. Usage: /brush hollow [true/false]");  return; }
+
+                        _brushHollow = hollow;
                         break;
 
                     case "replace":
-                        if (args.Length > 1 && args.Length < 3 && bool.TryParse(args[1], out bool replaceMode)) // Valid: 0+; 1.
-                        {
-                            _brushReplaceMode = replaceMode;
-                            // Console.WriteLine($"Brush replace mode set to: {_brushReplaceMode}");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Invalid replace mode. Usage: /brush replace [true/false]");
-                            return;
-                        }
+                        if (args.Length != 2 || !bool.TryParse(args[1], out bool replaceMode)) { Console.WriteLine("ERROR: Invalid replace mode. Usage: /brush replace [true/false]"); return; }
+
+                        _brushReplaceMode = replaceMode;
                         break;
 
                     case "rapid":
-                        if (args.Length > 1 && args.Length < 3 && bool.TryParse(args[1], out bool rapidMode)) // Valid: 0+; 1.
-                        {
-                            _brushRapidMode = rapidMode;
-                            // Console.WriteLine($"Brush rapid mode set to: {_brushRapidMode}");
-                        }
-                        else
-                        {
-                            Console.WriteLine("ERROR: Invalid rapid mode. Usage: /brush rapid [true/false]");
-                            return;
-                        }
+                        if (args.Length != 2 || !bool.TryParse(args[1], out bool rapidMode))   { Console.WriteLine("ERROR: Invalid rapid mode. Usage: /brush rapid [true/false]");     return; }
+
+                        _brushRapidMode = rapidMode;
                         break;
 
                     default:
@@ -4153,7 +4057,7 @@ namespace DNA.CastleMinerZ.UI
 
                 // Display enabled message.
                 Console.WriteLine($"Brush Activated!\n\n" +
-                                  $"Block Type: {_brushBlockPattern}\n"+
+                                  $"Block Type: {_brushBlockPattern}\n" +
                                   $"Block Shape: {_brushShape}\n" +
                                   $"Brush Size: {_brushSize}\n" +
                                   $"Brush Height: {_brushHeight}\n" +
@@ -4176,7 +4080,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/nuke")]
         private static void ExecuteRemoveNear(string[] args)
         {
-            if (args.Length < 1)
+            if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /removenear [radii] (pos1)");
                 return;
