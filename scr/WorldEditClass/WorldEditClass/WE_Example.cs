@@ -834,6 +834,7 @@ namespace DNA.CastleMinerZ.UI
         #endregion
 
         #region /jumpto
+
         private static Vector3 lastJumpLocation = new Vector3(0, 0, 0); // Store the last jump location.
 
         [Command("/jumpto")]
@@ -4603,3 +4604,4 @@ namespace DNA.CastleMinerZ.UI
     }
 
 }
+
