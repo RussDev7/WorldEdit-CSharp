@@ -4375,6 +4375,43 @@ public class WorldEdit
             }
         }
     }
+
+    public static void CopySchematic(HashSet<Tuple<Vector3, int>> schematic)
+    {
+        // Treat this as a "fresh" copy from an external source:
+        // - Anchor is unknown, so reset it.
+        // - Clipboard is cleared.
+        CopyAnchorOffset = Vector3.Zero;
+        copiedRegion.Clear();
+  
+        // Find the minimum corner so the clipboard is origin-based (0,0,0), same as CopyRegion.
+        int minX = int.MaxValue, minY = int.MaxValue, minZ = int.MaxValue;
+        foreach (var t in schematic)
+        {
+            var p = t.Item1;
+            int x = (int)p.X, y = (int)p.Y, z = (int)p.Z;
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (z < minZ) minZ = z;
+        }
+  
+        // Normalize and copy into the game clipboard.
+        foreach (var t in schematic)
+        {
+            var p = t.Item1;
+            int block = t.Item2;
+    
+            // Normalize to the min corner (exactly how CopyRegion does it).
+            var redacted = new Vector3(
+                (int)p.X - minX,
+                (int)p.Y - minY,
+                (int)p.Z - minZ
+            );
+    
+            // Save copied block from location.
+            copiedRegion.Add(Tuple.Create(redacted, block));
+        }
+    }
     #endregion
 
     #region Cut
@@ -4673,4 +4710,5 @@ public class WorldEdit
     #endregion
 
     #endregion
+
 }
