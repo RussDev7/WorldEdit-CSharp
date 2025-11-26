@@ -1233,49 +1233,53 @@ public class WorldEdit
     // Get the existing block data and push it to the undo stack.
     public static void SaveUndo(HashSet<Vector3> region, int[] saveBlock = null, int[] ignoreBlock = null)
     {
-        HashSet<Tuple<Vector3, int, int>> actionsBuilder = new HashSet<Tuple<Vector3, int, int>>();
-        bool wasGUIDCreated = false; // Prevents making a new guid on non-duplicate hashsets.
-        bool useForAll = false;      // Skip further stack checking to increase performance.
-        int randomGUID = 0;          // Define a starting integer.
-
-        // Treat empty the same as null.
-        if (saveBlock?.Length > 0) saveBlock = null;
-        if (ignoreBlock?.Length > 0) ignoreBlock = null;
-
-        // Iterate through all vectors within the region.
-        foreach (Vector3 i in region)
+        try
         {
-            // Get the block ID from regions location within the world.
-            int worldBlock = GetBlockFromLocation(i);
+            HashSet<Tuple<Vector3, int, int>> actionsBuilder = new HashSet<Tuple<Vector3, int, int>>();
+            bool wasGUIDCreated = false; // Prevents making a new guid on non-duplicate hashsets.
+            bool useForAll = false;      // Skip further stack checking to increase performance.
+            int randomGUID = 0;          // Define a starting integer.
 
-            // If a save block was specified, only save the locations of that block id.
-            if (saveBlock != null && !saveBlock.Contains(worldBlock)) continue;
+            // Treat empty the same as null.
+            if (saveBlock != null && saveBlock.Length == 0) return;
+            if (ignoreBlock != null && ignoreBlock.Length == 0) return;
 
-            // If ignore block was specified, skip locations matching the block id.
-            if (ignoreBlock != null && ignoreBlock.Contains(worldBlock)) continue;
-
-            // Define new data.
-            var vectorData = new Tuple<Vector3, int, int>(i, worldBlock, 0);
-
-            // Check if the hashset already contains this data.
-            if (useForAll || (UndoStack.Count > 0 && UndoStack.Peek().Contains(vectorData)))
+            // Iterate through all vectors within the region.
+            foreach (Vector3 i in region)
             {
-                // Generate a new guid only once.
-                if (!wasGUIDCreated)
+                // Get the block ID from regions location within the world.
+                int worldBlock = GetBlockFromLocation(i);
+
+                // If a save block was specified, only save the locations of that block id.
+                if (saveBlock != null && !saveBlock.Contains(worldBlock)) continue;
+
+                // If ignore block was specified, skip locations matching the block id.
+                if (ignoreBlock != null && ignoreBlock.Contains(worldBlock)) continue;
+
+                // Define new data.
+                var vectorData = new Tuple<Vector3, int, int>(i, worldBlock, 0);
+
+                // Check if the hashset already contains this data.
+                if (useForAll || (UndoStack.Count > 0 && UndoStack.Peek().Contains(vectorData)))
                 {
-                    wasGUIDCreated = true; // Prevents making a new guid on non-duplicate hashsets.
-                    randomGUID = Guid.NewGuid().GetHashCode();
+                    // Generate a new guid only once.
+                    if (!wasGUIDCreated)
+                    {
+                        wasGUIDCreated = true; // Prevents making a new guid on non-duplicate hashsets.
+                        randomGUID = Guid.NewGuid().GetHashCode();
+                    }
+
+                    useForAll = true;          // Skip further stack checking to increase performance.
+                    vectorData = new Tuple<Vector3, int, int>(i, worldBlock, randomGUID);
                 }
 
-                useForAll = true;          // Skip further stack checking to increase performance.
-                vectorData = new Tuple<Vector3, int, int>(i, worldBlock, randomGUID);
+                actionsBuilder.Add(vectorData);
             }
 
-            actionsBuilder.Add(vectorData);
+            // Add builder to new redo.
+            UndoStack.Push(actionsBuilder);
         }
-
-        // Add builder to new redo.
-        UndoStack.Push(actionsBuilder);
+        catch (NullReferenceException) { }
     }
 
     // Push the new block data to the undo stack.

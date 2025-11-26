@@ -3978,10 +3978,21 @@ namespace DNA.CastleMinerZ.UI
                             // Turn off brushing commands.
                             _brushReplaceMode = false;
                             _brushRapidMode = false;
+                            _brushRunTimes = 0;
 
-                            Timer brushTimer = new Timer() { Interval = 1 };
-                            brushTimer.Tick += WorldBrush_Tick;
-                            brushTimer.Start();
+                            // Make sure we don't stack multiple timers.
+                            if (_brushTimer != null)
+                            {
+                                _brushTimer.Stop();
+                                _brushTimer.Tick -= WorldBrush_Tick;
+                                _brushTimer.Dispose();
+                                _brushTimer = null;
+                            }
+
+                            // Create and start a single shared timer.
+                            _brushTimer = new Timer { Interval = 1 };
+                            _brushTimer.Tick += WorldBrush_Tick;
+                            _brushTimer.Start();
 
                             _brushEnabled = true;
                             break;
@@ -3990,6 +4001,14 @@ namespace DNA.CastleMinerZ.UI
                     case "off":
                         Console.WriteLine("Brush Deactivated!");
                         _brushEnabled = false;
+
+                        if (_brushTimer != null)
+                        {
+                            _brushTimer.Stop();
+                            _brushTimer.Tick -= WorldBrush_Tick;
+                            _brushTimer.Dispose();
+                            _brushTimer = null;
+                        }
                         return;
 
                     case "block":
@@ -4426,6 +4445,7 @@ namespace DNA.CastleMinerZ.UI
 
         #region World Brush
 
+        private Timer _brushTimer;        // The single timer that drives WorldBrush_Tick.
         private int _brushRunTimes;       // Set default values.
         private string _brushBlockPattern = "1";
         private string _brushShape        = "sphere"; 
@@ -4438,8 +4458,18 @@ namespace DNA.CastleMinerZ.UI
         {
             if (!IsNetworkSessionActive() || !_brushEnabled)
             {
-                ((Timer)sender).Stop();
+                if (sender is Timer t)
+                {
+                    t.Stop();
+                    t.Tick -= WorldBrush_Tick;
+                    t.Dispose();
+
+                    if (ReferenceEquals(_brushTimer, t))
+                        _brushTimer = null;
+                }
+
                 _brushEnabled = false;
+                _brushRunTimes = 0;
                 return;
             }
 
