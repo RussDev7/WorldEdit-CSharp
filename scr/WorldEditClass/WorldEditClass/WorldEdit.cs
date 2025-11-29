@@ -82,7 +82,7 @@ public class WorldEdit
     /// </summary>
     public static (int MinY,   int MaxY)    WorldHeights  = (-64, 64);
     public static (int MinID,  int MaxID)   BlockIDValues = (0, 93);
-    public static (int WidthX, int LengthZ) ChunkSize     = (24, 24);
+    public static (int WidthX, int LengthZ) ChunkSize     = (16, 16);
     public static int WandItemID = 39;
     public static int LeavesID   = 18;
     public static int LogID      = 17;
@@ -4716,3 +4716,4 @@ public class WorldEdit
     #endregion
 
 }
+
