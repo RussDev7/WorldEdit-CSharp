@@ -1813,9 +1813,9 @@ namespace DNA.CastleMinerZ.UI
                 string replacePattern = !string.IsNullOrEmpty(args[1]) ? args[1] : "1";
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                int[] searchPatternNumbers = (searchPattern == "all") ? new int[1] : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern, BlockIDValues);
+                int[] searchPatternNumbers = (searchPattern == "all") ? Array.Empty<int>() : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern, BlockIDValues);
                 if (searchPattern != "all" && searchPatternNumbers.Length == 0) return;   // Make sure the input is within the min/max.
-                int[] replacePatternNumbers = (replacePattern == "all") ? new int[1] : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern, BlockIDValues);
+                int[] replacePatternNumbers = (replacePattern == "all") ? Array.Empty<int>() : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern, BlockIDValues);
                 if (replacePattern != "all" && replacePatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Define location data.
@@ -4183,9 +4183,9 @@ namespace DNA.CastleMinerZ.UI
                     basePosition = _pointToLocation1;
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
-                int[] searchPatternNumbers = (searchPattern == "all") ? new int[1] : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern, BlockIDValues);
+                int[] searchPatternNumbers = (searchPattern == "all") ? Array.Empty<int>() : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(searchPattern, BlockIDValues);
                 if (searchPattern != "all" && searchPatternNumbers.Length == 0) return;   // Make sure the input is within the min/max.
-                int[] replacePatternNumbers = (replacePattern == "all") ? new int[1] : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern, BlockIDValues);
+                int[] replacePatternNumbers = (replacePattern == "all") ? Array.Empty<int>() : GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(replacePattern, BlockIDValues);
                 if (replacePattern != "all" && replacePatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // Get the shortest distance from the world boundaries.
@@ -4634,4 +4634,5 @@ namespace DNA.CastleMinerZ.UI
     }
 
 }
+
 
