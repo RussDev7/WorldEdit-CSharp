@@ -23,8 +23,8 @@ namespace DNA.CastleMinerZ
 			SpriteBatch spriteBatch = e.SpriteBatch;
 			if (this._game.CurrentNetworkSession != null)
 			{
-				Matrix viewMat = this.mainView.Camera.View;
-				Matrix projMat = this.mainView.Camera.GetProjection(e.Device);
+				Matrix view = this.mainView.Camera.View;
+				Matrix projection = this.mainView.Camera.GetProjection(e.Device);
 				Matrix viewProj = viewMat * projMat;
 				spriteBatch.Begin();
                 // this.spriteBatch.Begin();
@@ -32,7 +32,7 @@ namespace DNA.CastleMinerZ
                 /// <summary>
                 /// This function is for 'WorldEditCUI' and it's purpose is to draw the visual selection outline box between two points within the 'WorldEdit' class.
                 /// </summary>
-                OutlineSelectionWithGrid(e.Device, viewMat, projMat, _pointToLocation1, _pointToLocation2);
+                OutlineSelectionWithGrid(e.Device, view, projection, _pointToLocation1, _pointToLocation2);
                 //
                 // for (int i = 0; i < this._game.CurrentNetworkSession.AllGamers.Count; i++)
 				for (int i = 0; i < this._game.CurrentNetworkSession.AllGamers.Count; i++)
