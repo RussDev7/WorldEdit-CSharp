@@ -19,7 +19,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework;
 using DNA.Drawing;
 
-using static WorldEdit;
+using static WorldEdit.WorldEditCore;
 
 /// <summary>
 /// XNA Framework Version

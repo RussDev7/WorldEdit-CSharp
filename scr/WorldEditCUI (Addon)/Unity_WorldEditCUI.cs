@@ -17,7 +17,7 @@ GNU GENERAL PUBLIC LICENSE FOR MORE DETAILS.
 
 using UnityEngine;
 
-using static WorldEdit;
+using static WorldEdit.WorldEditCore;
 
 /// <summary>
 /// Unity Version

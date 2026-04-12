@@ -11,57 +11,54 @@ using DNA.Timers;
 using System;
 
 // These namespaces are required for the 'WorldEditCUI' class.
+using static WorldEdit.WorldEditCore;
 using static XNA_WorldEditCUI;
-using static WorldEdit;
 
 namespace DNA.CastleMinerZ
 {
-    public partial class GameScreen : ScreenGroup
-    {
-        private void gameScreen_AfterDraw(object sender, DrawEventArgs e)
-        {
-            if (this.spriteBatch == null)
-            {
-                this.spriteBatch = new SpriteBatch(e.Device);
-            }
-            if (this._game.CurrentNetworkSession != null)
-            {
-                Matrix view = this.mainView.Camera.View;
-                Matrix projection = this.mainView.Camera.GetProjection(e.Device);
-                Matrix matrix = view * projection;
-                this.spriteBatch.Begin();
+	public partial class GameScreen : ScreenGroup
+	{
+		private void gameScreen_AfterDraw(object sender, DrawEventArgs e)
+		{
+			SpriteBatch spriteBatch = e.SpriteBatch;
+			if (this._game.CurrentNetworkSession != null)
+			{
+				Matrix viewMat = this.mainView.Camera.View;
+				Matrix projMat = this.mainView.Camera.GetProjection(e.Device);
+				Matrix viewProj = viewMat * projMat;
+				spriteBatch.Begin();
                 // this.spriteBatch.Begin();
                 //
                 /// <summary>
                 /// This function is for 'WorldEditCUI' and it's purpose is to draw the visual selection outline box between two points within the 'WorldEdit' class.
                 /// </summary>
-                OutlineSelectionWithGrid(e.Device, view, projection, _pointToLocation1, _pointToLocation2);
+                OutlineSelectionWithGrid(e.Device, viewMat, projMat, _pointToLocation1, _pointToLocation2);
                 //
                 // for (int i = 0; i < this._game.CurrentNetworkSession.AllGamers.Count; i++)
-                for (int i = 0; i < this._game.CurrentNetworkSession.AllGamers.Count; i++)
-                {
-                    NetworkGamer networkGamer = this._game.CurrentNetworkSession.AllGamers[i];
-                    if (networkGamer.Tag != null && !networkGamer.IsLocal)
-                    {
-                        Player player = (Player)networkGamer.Tag;
-                        if (player.Visible)
-                        {
-                            Vector3 vector = player.LocalPosition + new Vector3(0f, 2f, 0f);
-                            Vector4 vector2 = Vector4.Transform(vector, matrix);
-                            if (vector2.Z > 0f)
-                            {
-                                Vector3 vector3 = new Vector3(vector2.X / vector2.W, vector2.Y / vector2.W, vector2.Z / vector2.W);
-                                vector3 *= new Vector3(0.5f, -0.5f, 1f);
-                                vector3 += new Vector3(0.5f, 0.5f, 0f);
-                                vector3 *= new Vector3((float)Screen.Adjuster.ScreenRect.Width, (float)Screen.Adjuster.ScreenRect.Height, 1f);
-                                Vector2 vector4 = this._game._nameTagFont.MeasureString(networkGamer.Gamertag);
-                                this.spriteBatch.DrawOutlinedText(this._game._nameTagFont, networkGamer.Gamertag, new Vector2(vector3.X, vector3.Y) - vector4 / 2f, Color.White, Color.Black, 1);
-                            }
-                        }
-                    }
-                }
-                this.spriteBatch.End();
-            }
-        }
-    }
+				for (int i = 0; i < this._game.CurrentNetworkSession.AllGamers.Count; i++)
+				{
+					NetworkGamer gamer = this._game.CurrentNetworkSession.AllGamers[i];
+					if (gamer.Tag != null && !gamer.IsLocal)
+					{
+						Player player = (Player)gamer.Tag;
+						if (player.Visible)
+						{
+							Vector3 worldPos = player.LocalPosition + new Vector3(0f, 2f, 0f);
+							Vector4 spos = Vector4.Transform(worldPos, viewProj);
+							if (spos.Z > 0f)
+							{
+								Vector3 screenPos = new Vector3(spos.X / spos.W, spos.Y / spos.W, spos.Z / spos.W);
+								screenPos *= new Vector3(0.5f, -0.5f, 1f);
+								screenPos += new Vector3(0.5f, 0.5f, 0f);
+								screenPos *= new Vector3((float)Screen.Adjuster.ScreenRect.Width, (float)Screen.Adjuster.ScreenRect.Height, 1f);
+								Vector2 textSize = this._game._nameTagFont.MeasureString(gamer.Gamertag);
+								spriteBatch.DrawOutlinedText(this._game._nameTagFont, gamer.Gamertag, new Vector2(screenPos.X, screenPos.Y) - textSize / 2f, Color.White, Color.Black, 1);
+							}
+						}
+					}
+				}
+				spriteBatch.End();
+			}
+		}
+	}
 }
