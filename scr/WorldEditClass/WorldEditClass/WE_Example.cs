@@ -17,41 +17,66 @@ GNU GENERAL PUBLIC LICENSE FOR MORE DETAILS.
 
 using System.Collections.Generic;
 using DNA.Drawing.UI.Controls;
+using Microsoft.Xna.Framework;
 using System.Threading.Tasks;
-using DNA.CastleMinerZ.Net;
-using System.Globalization;
 using System.Windows.Forms;
-using System.Windows.Input;
 using System.Reflection;
 using System.Numerics;
 using System.Linq;
 using System.Text;
 using System.IO;
+using WorldEdit;
 using System;
 
-using static WorldEdit.EnumMapper;
-using static WorldEdit.WorldUtils;
-using static WorldEdit;
+using static WorldEdit.WorldEditCore.EnumMapper;
+using static WorldEdit.WorldEditCore.WorldUtils;
+using static WorldEdit.WorldEditCore;
 
-using Vector3 = Microsoft.Xna.Framework.Vector3;               // For testing purposes.
-using ButtonState = Microsoft.Xna.Framework.Input.ButtonState; // For testing purposes.
-using MouseState = Microsoft.Xna.Framework.Input.MouseState;   // For testing purposes.
-using Mouse = Microsoft.Xna.Framework.Input.Mouse;             // For testing purposes.        
+using ButtonState = Microsoft.Xna.Framework.Input.ButtonState; // XNA (CMZ) Type Aliases.
+using MouseState  = Microsoft.Xna.Framework.Input.MouseState;  //
+using Mouse       = Microsoft.Xna.Framework.Input.Mouse;       //
+using Vector3     = Microsoft.Xna.Framework.Vector3;           //      
 
 namespace DNA.CastleMinerZ.UI
 {
     public partial class PlainChatInputScreen : UIControlScreen
     {
-        #region Variables
+        #region Wand State
 
-        private bool   _wandEnabled;
-        private bool   _toolEnabled;
-        private bool   _brushEnabled;
+        // Instance flags (drive behavior).
+        private bool _wandEnabled;
+        private bool _toolEnabled;
+        private bool _brushEnabled;
 
-        private string _toolCommand = "";
-        private int    _toolItem    = WandItemID; // Use the wand item as a placeholder.
-        private int    _brushItem   = WandItemID; // Use the wand item as a placeholder.
+        // Static snapshot.
+        internal static volatile bool WandEnabled;
+        internal static volatile bool ToolEnabled;
+        internal static volatile bool BrushEnabled;
+        internal static volatile int  ActiveWandItemID;
+        internal static volatile int  ActiveToolItemID;
+        internal static volatile int  ActiveNavWandItemID = NavWandItemID;
+        internal static volatile int  ActiveBrushItemID;
 
+        private string _toolCommand = "";         // Active tool sub-command (set by /tool); empty = none selected.
+        private int    _toolItem    = WandItemID; // Item ID required to activate the tool; defaults to WandItem as a safe placeholder.
+        private int    _brushItem   = WandItemID; // Item ID required to activate the brush; defaults to WandItem as a safe placeholder.
+
+        /// <summary>
+        /// Returns true if any wand mode is currently enabled.
+        /// Summary: Gates durability bypass to active WorldEdit tools only.
+        /// </summary>
+        public static bool IsAnyWandModeActive()
+        {
+            if (WandEnabled) return true;
+            if (ToolEnabled) return true;
+            if (BrushEnabled) return true;
+
+            // NavWand "enabled" if configured.
+            if (WorldEditCore.NavWandItemID >= 0)
+                return true;
+
+            return false;
+        }
         #endregion
 
         #region Text Edit Control
@@ -70,7 +95,7 @@ namespace DNA.CastleMinerZ.UI
             else
             {
                 // Not a command, do normal chat functions.
-                BroadcastTextMessage.Send(_game.MyNetworkGamer, $"{_game.MyNetworkGamer.Gamertag}: {inputText}");
+                DNA.CastleMinerZ.Net.BroadcastTextMessage.Send(_game.MyNetworkGamer, $"{_game.MyNetworkGamer.Gamertag}: {inputText}");
             }
 
             _textEditControl.Text = ""; // Clear input to prevent repeated execution.
@@ -160,87 +185,97 @@ namespace DNA.CastleMinerZ.UI
         private static readonly (string command, string description)[] commands = new (string, string)[]
         {
             // Showcasing Commands.
-            ("cc",                                                                     "Clears the chat. This was made for showcasing."),
-            ("brightness [amount]",                                                    "Change the brightness. Use '1' for default. This was made for showcasing."),
-            ("teleport [x] [y] [z]",                                                   "Teleport the player to a new position."),
-            ("time [time]",                                                            "Change the worlds time. Use 0-100 for time of day."),
-            ("toggleui",                                                               "Toggles the HUD and UI visibility."),
+            ("cc",                                                                           "Clears the chat. This was made for showcasing."),
+            ("brightness [amount]",                                                          "Change the brightness. Use '1' for default. This was made for showcasing."),
+            ("teleport [x] [y] [z] (spawnOnTop)",                                            "Teleport the player to a new position."),
+            ("time [time]",                                                                  "Change the worlds time. Use 0-100 for time of day."),
+            ("toggleui",                                                                     "Toggles the HUD and UI visibility."),
+            ("seed",                                                                         "Display the seed of the current world."),
 
             // General Commands.
-            ("help (page)",                                                            "Display all available commands."),
-            ("undo (times)",                                                           "Undoes the last action (from history)."),
-            ("redo (times)",                                                           "Redoes the last action (from history)."),
-            ("clearhistory",                                                           "Clear your history."),
+            ("help (page)",                                                                  "Display all available commands."),
+            ("undo (times)",                                                                 "Undoes the last action (from history)."),
+            ("redo (times)",                                                                 "Redoes the last action (from history)."),
+            ("clearhistory",                                                                 "Clear your history."),
+            ("undorecord (toggle|on|off|check)",                                             "Toggle recording of undo/redo snapshot data (persists to config)."),
 
             // Navigation Commands.
-            ("unstuck",                                                                "Escape from being stuck inside a block."),
-            ("ascend (levels)",                                                        "Go up a floor."),
-            ("descend (levels)",                                                       "Go down a floor."),
-            ("ceil",                                                                   "Go to the ceiling."),
-            ("thru",                                                                   "Pass through walls."),
-            ("jumpto",                                                                 "Teleport to the cursors location."),
-            ("up [amount]",                                                            "Go upwards some distance."),
-            ("down [amount]",                                                          "Go downwards some distance."),
+            ("unstuck",                                                                      "Escape from being stuck inside a block."),
+            ("ascend (levels)",                                                              "Go up a floor."),
+            ("descend (levels)",                                                             "Go down a floor."),
+            ("ceil",                                                                         "Go to the ceiling."),
+            ("thru",                                                                         "Pass through walls."),
+            ("jumpto",                                                                       "Teleport to the cursors location."),
+            ("up [amount|max]",                                                              "Go upwards some distance."),
+            ("down [amount|max]",                                                            "Go downwards some distance."),
 
             // Selection Commands.
-            ("pos [pos1/pos2..]",                                                      "Set positions."),
-            ("hpos [hpos1/hpos2..]",                                                   "Set position to targeted block."),
-            ("chunk (coordinates)",                                                    "Set the selection to your current chunk."),
-            ("wand [on/off]",                                                          "Get the wand item."),
-            ("contract [amount] (direction)",                                          "Contract the selection area."),
-            ("shift [amount] (direction)",                                             "Shift the selection area."),
-            ("trim [mask block(,array)]",                                              "Minimize the selection to encompass matching blocks."),
-            ("size (clipboard)",                                                       "Get information about the selection."),
-            ("count [find block(,array)]",                                             "Counts the number of blocks matching a mask."),
-            ("distr (clipboard) (page)",                                               "Get the distribution of blocks in the selection."),
-            ("expand [amount(vert)] (direction)",                                      "Expand the selection area."),
+            ("pos [pos1|pos2..] (or /pos1|/pos2)",                                           "Set positions."),
+            ("hpos [hpos1|hpos2..]",                                                         "Set position to targeted block."),
+            ("chunk (chunkRadius|coordinates)",                                              "Set the selection to your current chunk."),
+            ("wand (on|off)",                                                                "Get the wand item."),
+            ("contract [amount] (direction)",                                                "Contract the selection area."),
+            ("shift [amount] (direction)",                                                   "Shift the selection area."),
+            ("trim [mask block(,array)]",                                                    "Minimize the selection to encompass matching blocks."),
+            ("size (clipboard)",                                                             "Get information about the selection."),
+            ("count [find block(,array)]",                                                   "Counts the number of blocks matching a mask."),
+            ("distr (clipboard) (page)",                                                     "Get the distribution of blocks in the selection."),
+            ("expand [amount(vert)] (direction)",                                            "Expand the selection area."),
 
             // Region Commands.
-            ("set [block(,array)] (hollow)",                                           "Sets all the blocks in the region."),
-            ("break (mask block(,array))",                                             "Breaks all blocks in the region (drops items)."),
-            ("line [block(,array)] (thickness)",                                       "Draws line segments between two positions."),
-            ("replace [source block,(all)] [to block,(all)]",                          "Replace all blocks in the selection with another."),
-            ("allexcept [source block(,array)] (to block(,array))",                    "Replace all blocks except a desired block pattern."),
-            ("overlay [replace block(,array)]",                                        "Set a block on top of blocks in the region."),
-            ("walls [block(,array)]",                                                  "Build the four sides of the selection."),
-            ("smooth (iterations)",                                                    "Smooth the elevation in the selection."),
-            ("move [amount] (direction)",                                              "Move the contents of the selection."),
-            ("stack (amount) (direction) (useAir)",                                    "Repeat the contents of the selection."),
-            ("stretch (amount) (direction) (useAir)",                                  "Stretch the contents of the selection."),
-            ("spell [words(@linebreak)/(/paste)] [block(,array)] (flip) (rotate)",     "Draws a text made of blocks relative to position 1."),
-            ("hollow (block(,array)) (thickness)",                                     "Hollows out the object contained in this selection."),
-            ("fill [block(,array)]",                                                   "Fills only the inner-most blocks of an object contained in this selection."),
-            ("wrap [replace block(,array)] (wrap direction(all)) (exclude direction)", "Fills only the outer-most air blocks of an object contained in this selection."),
-            ("matrix [radius] [spacing] (snow) (default(,array))",                     "Places your clipboard spaced out in intervals."),
-            ("forest [area_size] [density] (max_height)",                              "Make a forest within the region."),
-            ("tree (max_height)",                                                      "Make a tree at position 1."),
+            ("set [block(,array)] (hollow)",                                                 "Sets all the blocks in the region."),
+            ("break (mask block(,array))",                                                   "Breaks all blocks in the region (drops items)."),
+            ("line [block(,array)] (thickness)",                                             "Draws line segments between two positions."),
+            ("replace [source block,(all)] [to block,(all)]",                                "Replace all blocks in the selection with another."),
+            ("allexcept [source block(,array)] (to block(,array))",                          "Replace all blocks except a desired block pattern."),
+            ("overlay [replace block(,array)]",                                              "Set a block on top of blocks in the region."),
+            ("naturalize",                                                                   "Place 3 layers of dirt on top then rock below."),
+            ("walls [block(,array)]",                                                        "Build the four sides of the selection."),
+            ("smooth (iterations)",                                                          "Smooth the elevation in the selection."),
+            ("move [amount] (direction)",                                                    "Move the contents of the selection."),
+            ("regen (seed)",                                                                 "Regenerates the contents of the selection."),
+            ("stack (amount) (direction) (useAir)",                                          "Repeat the contents of the selection."),
+            ("stretch (amount) (direction) (useAir)",                                        "Stretch the contents of the selection."),
+            ("spell [(\")words(\")(@linebreak)/(/paste)] [block(,array)] (flip) (rotate)",   "Draws a text made of blocks relative to position 1."),
+            ("hollow (block(,array)) (thickness)",                                           "Hollows out the object contained in this selection."),
+            ("shapefill [block(,array)]",                                                    "Fills only the inner-most blocks of an object contained in this selection."),
+            ("wrap [replace block(,array)] (wrap direction(s)(all)) (exclude direction(s))", "Fills only the outer-most air blocks of an object contained in this selection."),
+            ("matrix [radius] [spacing] (snow) (default(,array))",                           "Places your clipboard spaced out in intervals."),
+            ("forest [area_size] [density] (max_height) (snow_radius)",                      "Make a forest within the region, or in a circle around pos1."),
+            ("tree (max_height)",                                                            "Make a tree at position 1."),
+            ("break",                                                                        "Mines and drops all blocks within the region."),
 
             // Generation Commands.
-            ("floor [block(,array)] [radius] (hollow)",                                "Makes a filled floor."),
-            ("cube [block(,array)] [radii] (hollow)",                                  "Makes a filled cube."),
-            ("prism [block(,array)] [length] [width] (height) (hollow)",               "Makes a filled prism."),
-            ("sphere [block(,array)] [radii] (hollow) (height)",                       "Makes a filled sphere."),
-            ("pyramid [block(,array)] [size] (hollow)",                                "Makes a filled pyramid."),
-            ("cone [block(,array)] [radii] [height] (hollow)",                         "Makes a filled cone."),
-            ("cylinder [block(,array)] [radii] [height] (hollow)",                     "Makes a filled cylinder."),
-            ("diamond [r block(,array)] [radii] (hollow) (squared)",                   "Makes a filled diamond."),
-            ("ring [block(,array)] [radius] (hollow)",                                 "Makes a filled ring."),
-            ("ringarray [block(,array)] [amount] [space]",                             "Makes a hollowed ring at evenly spaced intervals."),
-            ("generate [block(,array)] [expression(clipboard)] (hollow)",              "Generates a shape according to a formula."),
+            ("floor [block(,array)] [radius] (hollow)",                                      "Makes a filled floor."),
+            ("cube [block(,array)] [radii] (hollow)",                                        "Makes a filled cube."),
+            ("prism [block(,array)] [length] [width] (height) (hollow)",                     "Makes a filled prism."),
+            ("sphere [block(,array)] [radii] (hollow) (height)",                             "Makes a filled sphere."),
+            ("pyramid [block(,array)] [size] (hollow)",                                      "Makes a filled pyramid."),
+            ("cone [block(,array)] [radii] [height] (hollow)",                               "Makes a filled cone."),
+            ("cylinder [block(,array)] [radii] [height] (hollow)",                           "Makes a filled cylinder."),
+            ("diamond [r block(,array)] [radii] (hollow) (squared)",                         "Makes a filled diamond."),
+            ("ring [block(,array)] [radius] (hollow)",                                       "Makes a filled ring."),
+            ("ringarray [block(,array)] [amount] [space]",                                   "Makes a hollowed ring at evenly spaced intervals."),
+            ("generate [block(,array)] [expression(clipboard)] (hollow)",                    "Generates a shape according to a formula."),
 
             // Schematic and Clipboard Commands.
-            ("schematic [save] (saveAir)",                                             "Save your clipboard into a schematic file."),
-            ("schematic [load] (loadAir)",                                             "Load a schematic into your clipboard."),
-            ("copy",                                                                   "Copy the selection to the clipboard."),
-            ("cut",                                                                    "Cut the selection to the clipboard."),
-            ("paste (useAir) (pos1)",                                                  "Paste the clipboard's contents."),
-            ("rotate (rotateY) (rotateX) (rotateZ)",                                   "Rotate the contents of the clipboard."),
-            ("flip (direction)",                                                       "Flip the contents of the clipboard across the origin."),
-            ("clearclipboard",                                                         "Clear your clipboard."),
+            ("schematic [save] (saveAir)",                                                   "Save your clipboard into a schematic file."),
+            ("schematic [load] (loadAir)",                                                   "Load a schematic into your clipboard."),
+            ("copy",                                                                         "Copy the selection to the clipboard."),
+            ("cut",                                                                          "Cut the selection to the clipboard."),
+            ("paste (useAir) (pos1)",                                                        "Paste the clipboard's contents."),
+            ("rotate (rotateY) (rotateX) (rotateZ)",                                         "Rotate the contents of the clipboard."),
+            ("flip (direction)",                                                             "Flip the contents of the clipboard across the origin."),
+            ("clearclipboard",                                                               "Clear your clipboard."),
+            ("copychunk (chunkRadius)",                                                      "Copies the current chunk or a 16x16 range of chunks into the chunk clipboard."),
+            ("cutchunk (chunkRadius)",                                                       "Cuts the current chunk or a 16x16 range of chunks into the chunk clipboard."),
+            ("pastechunk (useAir) (force)",                                                  "Pastes the copied chunk(s) clipboard around the player's current chunk."),
+            ("delchunk (chunkRadius) (noundo)",                                              "Deletes the contents of your current chunk(s). Undoable by default."),
 
             // Tool Commands.
             ("tool [on/off] [/command], "              +
-                 "tool command [/command]",                                            "Binds a tool to the item in your hand."),
+                 "tool command [/command]",                                                  "Binds a tool to the item in your hand."),
+            ("navwand (on|off|item|id|none)",                                                "Navigation wand tool; left click = /jumpto, right click = /thru."),
 
             // Brush Commands.
             ("brush [on/off] (block(,array)) (size), " +
@@ -250,12 +285,16 @@ namespace DNA.CastleMinerZ.UI
                  "brush height [height], "             +
                  "brush hollow [true/false], "         +
                  "brush replace [true/false], "        +
-                 "brush rapid [true/false]",                                           "Brushing commands."),
+                 "brush rapid [true/false]",                                                 "Brushing commands."),
 
             // Utility Commands.
-            ("removenear [radii] (pos1)",                                              "Remove all blocks within a cylindrical radii."),
-            ("replacenear [radii] [source block,(all)] [to block,(all)] (pos1)",       "Replace all blocks within a cylindrical radii with another."),
-            ("snow [block(,array)] [radius] (pos1)",                                   "Places a pattern of blocks on ground level.")
+            ("fill [block(,array)] [radius] (depth) (direction)",                            "Fills connected air columns from the targeted block."),
+            ("fillr [block(,array)] [radius] (depth) (direction)",                           "Recursively fills connected air from the targeted block."),
+            ("drain [radius]",                                                               "Drains connected liquid near the targeted block."),
+            ("removenear [radii] (pos1)",                                                    "Remove all blocks within a cylindrical radii."),
+            ("replacenear [radii] [source block,(all)] [to block,(all)] (pos1)",             "Replace all blocks within a cylindrical radii with another."),
+            ("snow [block(,array)] [radius] (pos1|region (worldY)) (replaceSurface)",        "Places a pattern of blocks on ground level or within the selected region."),
+            ("randomplace [block(,array)] [radius] (amount) (replaceSurface)",               "Places a block pattern at random positions within a square radius."),
         };
         #endregion
 
@@ -268,17 +307,17 @@ namespace DNA.CastleMinerZ.UI
         #region /cc
 
         [Command("/cc")]
-        private static void ExecuteCC()
+        private void ExecuteCC()
         {
             try
             {
-                // Send blank messages to chat to clear chat.
+                // Send blank messages to chat to clear chat publicly.
                 for (int i = 0; i < 10; i++)
-                    Console.WriteLine("");
+                    DNA.CastleMinerZ.Net.BroadcastTextMessage.Send(DNA.CastleMinerZ.CastleMinerZGame.Instance?.MyNetworkGamer, " "); // Console.WriteLine("");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -286,7 +325,7 @@ namespace DNA.CastleMinerZ.UI
         #region /brightness
 
         [Command("/brightness")]
-        private static void ExecuteBrightness(string[] args)
+        private void ExecuteBrightness(string[] args)
         {
             if (args.Length == 0)
             {
@@ -297,7 +336,7 @@ namespace DNA.CastleMinerZ.UI
             try
             {
                 float amount = float.TryParse(args[0], out float a) ? a : 1;
-                
+
                 // Check if the brightness is greater then 0. If not, disable.
                 if (amount > 1)
                 {
@@ -317,7 +356,7 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -326,32 +365,82 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("/teleport")]
         [Command("/tp")]
-        private static void ExecuteTeleport(string[] args)
+        private void ExecuteTeleport(string[] args)
         {
-            if (args.Length < 3)
+            if (args.Length < 1)
             {
-                Console.WriteLine("ERROR: Command usage /teleport [x] [y] [z]");
+                Console.WriteLine("ERROR: Command usage /teleport [x] [y] [z] (spawnOnTop)");
                 return;
             }
 
             try
             {
-                float xPos = float.TryParse(args[0], out float x) ? x : 0;
-                float yPos = float.TryParse(args[1], out float y) ? y : 0;
-                float zPos = float.TryParse(args[2], out float z) ? z : 0;
+                float yPos  = 0f;
+                float zPos  = 0f;
+                bool  spawnOnTop = true; // Default.
+                int   index = 0;
+
+                // Parse X (required, must be numeric).
+                if (index >= args.Length || !float.TryParse(args[index], out float xPos))
+                {
+                    Console.WriteLine("ERROR: X must be a number. Usage: /teleport [x] (y) (z) (spawnOnTop:true|false).");
+                    return;
+                }
+                index++;
+
+                // Parse Y (optional numeric).
+                if (index < args.Length && float.TryParse(args[index], out float yTmp))
+                {
+                    yPos = yTmp;
+                    index++;
+                }
+
+                // Parse Z (optional numeric).
+                if (index < args.Length && float.TryParse(args[index], out float zTmp))
+                {
+                    zPos = zTmp;
+                    index++;
+                }
+
+                // Optional spawnOnTop bool.
+                if (index < args.Length)
+                {
+                    string flag = args[index];
+                    if (!string.IsNullOrWhiteSpace(flag))
+                    {
+                        if (!bool.TryParse(flag, out spawnOnTop))
+                        {
+                            Console.WriteLine("ERROR: spawnOnTop flag; Usage: /teleport [x] (y) (z) (spawnOnTop:true|false).");
+                            return;
+                        }
+                    }
+                    index++;
+                }
+
+                // If there are extra args beyond this point, treat as misuse.
+                if (index < args.Length)
+                {
+                    Console.WriteLine("ERROR: Too many arguments. Usage: /teleport [x] (y) (z) (spawnOnTop:true|false).");
+                    return;
+                }
 
                 // Define new position.
-                Vector3 newPosition = new Vector3(x, y, z);
+                Vector3 newPosition = new Vector3(xPos, yPos, zPos);
 
-                // Teleport the payer to the new position.
-                TeleportUser(newPosition, true);
+                // Teleport the player to the new position.
+                TeleportUser(newPosition, spawnOnTop);
 
-                // Display message.
-                Console.WriteLine($"Teleported to: '{new Vector3((int)Math.Round(newPosition.X), (int)Math.Round(newPosition.Y), (int)Math.Round(newPosition.Z))}'.");
+                // Display message with rounded coords.
+                var rounded = new Vector3(
+                    (int)Math.Round(newPosition.X),
+                    (int)Math.Round(newPosition.Y),
+                    (int)Math.Round(newPosition.Z));
+
+                Console.WriteLine($"Teleported to: '{rounded}' (spawnOnTop={spawnOnTop.ToString().ToLowerInvariant()}).");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -359,7 +448,7 @@ namespace DNA.CastleMinerZ.UI
         #region /time
 
         [Command("/time")]
-        private static void ExecuteTime(string[] args)
+        private void ExecuteTime(string[] args)
         {
             if (args.Length == 0)
             {
@@ -384,7 +473,7 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -407,34 +496,61 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
+        #region /seed
+
+        [Command("/seed")]
+        private void ExecuteSeed()
+        {
+            try
+            {
+                // If in-game, display the current world seed.
+                if (IsInGame())
+                    Console.WriteLine($"World seed: '{DNA.CastleMinerZ.CastleMinerZGame.Instance?.CurrentWorld?.Seed}'.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+
+            bool IsInGame()
+            {
+                var g = DNA.CastleMinerZ.CastleMinerZGame.Instance;
+                return g != null && g?.GameScreen != null && g?.CurrentNetworkSession != null;
+            }
+        }
+        #endregion
+
         #endregion
 
         // General Commands.
 
         #region /cui
 
+        [Command("//cui")]
         [Command("/cui")]
-        private static void ExecuteCUI(string[] args)
+        private void ExecuteCUI(string[] args)
         {
+            /*
             if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /cui [on/off]");
                 return;
             }
+            */
 
             try
             {
-                switch (args[0].ToLower())
+                switch (ResolveToggle(args, _enableCLU))
                 {
-                    case "on":
-                        if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
+                    case true:
+                        // if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
 
                         _enableCLU = true;
                         Console.WriteLine("Selections are now shown.");
                         break;
 
-                    case "off":
-                        if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
+                    case false:
+                        // if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
 
                         _enableCLU = false;
                         Console.WriteLine("Selections are now hidden.");
@@ -447,17 +563,19 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /help
 
+        /*
+        [Command("//help")]
         [Command("/help")]
-        private static void ExecuteHelp(string[] args)
+        private void ExecuteHelp(string[] args)
         {
-            int maxLinesPerPage = 7;
+            int maxLinesPerPage = GetHelpPageSize();
             int totalPages = (int)Math.Ceiling((double)commands.Length / maxLinesPerPage);
             int page = 1;
 
@@ -482,12 +600,42 @@ namespace DNA.CastleMinerZ.UI
                 Console.WriteLine($"== Use \"/help {page + 1}\" for the next page. ==");
             }
         }
+
+        #region Pagination Helpers
+
+        /// <summary>
+        /// Calculates how many help rows can fit on screen based on the current resolution.
+        /// Reserves space for the page header and navigation hint.
+        /// </summary>
+        private static int GetHelpPageSize()
+        {
+            int screenHeight = DNA.Drawing.UI.Screen.Adjuster.ScreenRect.Height;
+
+            // Rough visible line capacity:
+            // 720p  -> 7.
+            // 1080p -> 10.
+            int totalVisibleRows = (int)Math.Floor(screenHeight / 100f);
+
+            // Reserve lines for:
+            // 1) page header.
+            // 2) next-page hint.
+            int reservedRows = 2;
+
+            // Actual command rows allowed on the page.
+            int pageSize = totalVisibleRows - reservedRows;
+
+            // Safety clamp so extremes do not get silly.
+            return Math.Max(4, Math.Min(12, pageSize));
+        }
+        #endregion
+        */
         #endregion
 
         #region /undo
 
+        [Command("//undo")]
         [Command("/undo")]
-        private static void ExecuteUndo(string[] args)
+        private async Task ExecuteUndo(string[] args)
         {
             try
             {
@@ -513,7 +661,11 @@ namespace DNA.CastleMinerZ.UI
                         actionsCount++;
 
                     // Run the load undo function from the undo/redo manager.
-                    foreach (var action in LoadUndo())
+                    var frame = await LoadUndo();
+                    var actions = frame.Item1;
+                    var crates = frame.Item2;
+
+                    foreach (var action in actions)
                     {
                         // Get location of block and block ID.
                         Vector3 blockLocation = action.Item1;
@@ -523,15 +675,18 @@ namespace DNA.CastleMinerZ.UI
                         // If multiple undo's where made, the count is less then 1, make an exception.
                         // This is done encase the start and finish saves where the same nullifying them out.
                         if (GetBlockFromLocation(blockLocation) != block || (times > 1 && UndoStack.Count <= 1))
-                            PlaceBlock(blockLocation, block);
+                            AsyncBlockPlacer.Enqueue(blockLocation, block);
                     }
+
+                    // After enqueuing blocks, reconcile crate sidecar to match this snapshot.
+                    ApplyCratesFromSnapshot(actions, crates);
                 }
 
                 Console.WriteLine($"Undid '{actionsCount}' action(s) successfully!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -539,7 +694,8 @@ namespace DNA.CastleMinerZ.UI
         #region /redo
 
         [Command("/redo")]
-        private static void ExecuteRedo(string[] args)
+        [Command("/redo")]
+        private async Task ExecuteRedo(string[] args)
         {
             try
             {
@@ -565,7 +721,11 @@ namespace DNA.CastleMinerZ.UI
                         actionsCount++;
 
                     // Run the load redo function from the undo/redo manager.
-                    foreach (var action in LoadRedo())
+                    var frame = await LoadRedo();
+                    var actions = frame.Item1;
+                    var crates = frame.Item2;
+
+                    foreach (var action in actions)
                     {
                         // Get location of block and block ID.
                         Vector3 blockLocation = action.Item1;
@@ -575,24 +735,29 @@ namespace DNA.CastleMinerZ.UI
                         // If multiple redo's where made, the count is less then 1, make an exception.
                         // This is done encase the start and finish saves where the same nullifying them out.
                         if (GetBlockFromLocation(blockLocation) != block || (times > 1 && RedoStack.Count <= 1))
-                            PlaceBlock(blockLocation, block);
+                            AsyncBlockPlacer.Enqueue(blockLocation, block);
                     }
+
+                    // After enqueuing blocks, reconcile crate sidecar to match this snapshot.
+                    ApplyCratesFromSnapshot(actions, crates);
                 }
 
                 Console.WriteLine($"Redid '{actionsCount}' action(s) successfully!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /clearhistory
 
+        [Command("//clearhistory")]
         [Command("/clearhistory")]
+        [Command("//clearh")]
         [Command("/clearh")]
-        private static void ExecuteClearHistory()
+        private void ExecuteClearHistory()
         {
             try
             {
@@ -603,7 +768,58 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
+        #region /undorecord
+
+        [Command("//recordundo")]
+        [Command("/recordundo")]
+        [Command("//undorecord")]
+        [Command("/undorecord")]
+        [Command("//undorec")]
+        [Command("/undorec")]
+        private void ExecuteUndoRecord(string[] args)
+        {
+            // Summary:
+            // - /undorecord               -> Toggle on/off
+            // - /undorecord on|off|toggle -> Explicit state
+            // - /undorecord check         -> Print current state
+            //
+            // Lite behavior:
+            // - No config file
+            // - No persistence between sessions
+            // - Uses the in-memory _undoRecordingEnabled field only
+
+            try
+            {
+                bool current = _undoRecordingEnabled;
+
+                if (args != null && args.Length >= 1)
+                {
+                    string token = (args[0] ?? "").Trim().ToLowerInvariant();
+
+                    if (token == "check" || token == "status" || token == "state")
+                    {
+                        Console.WriteLine($"Undo recording is currently {(current ? "ON" : "OFF")}.");
+                        return;
+                    }
+                }
+
+                bool enable = ResolveToggle(args, current);
+
+                _undoRecordingEnabled = enable;
+
+                Console.WriteLine($"Undo recording {(enable ? "ENABLED" : "DISABLED")}.");
+
+                if (!enable)
+                    Console.WriteLine("Note: Edits will still apply, but changes made while OFF will not be undoable.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -612,72 +828,69 @@ namespace DNA.CastleMinerZ.UI
 
         #region /unstuck
 
+        [Command("//unstuck")]
         [Command("/unstuck")]
+        [Command("//!")]
         [Command("/!")]
-        private static void ExecuteUnstuck()
+        private async Task ExecuteUnstuck()
         {
             try
             {
-                // Get the new location offset.
                 Vector3 usersLocation = GetUsersLocation(); // Get the user's current location.
-                Vector3 newLocation = usersLocation;
 
-                // Try to ascend first.
-                Vector3 nextLocation = GetAscendingVector(newLocation);
+                // 1) Try to ascend first.
+                Vector3 nextLocation = await GetAscendingVector(usersLocation);
 
-                // Stop if no valid location is found.
                 if (nextLocation != usersLocation)
                 {
-                    // Teleport user.
-                    TeleportUser(newLocation, false);
-
-                    Console.WriteLine($"Teleported up '1' level!");
+                    // Use safe placement: Chunks may still be loading, and we're explicitly "unstucking".
+                    TeleportUser(nextLocation, true);
+                    Console.WriteLine("Teleported up '1' level!");
                     return;
                 }
 
-                // Still stuck, try going through.
-                Vector3 cursorLocation = GetUsersCursorLocation();                             // Get the user's cursor location.
-                Direction facingDirection = GetFacingDirection(usersLocation, cursorLocation); // Determine the direction the user is facing.
-                nextLocation = GetThruVector(newLocation, facingDirection);
+                // 2) Still stuck, try going through.
+                Vector3 cursorLocation = GetUsersCursorLocation();
+                Direction facingDirection = GetFacingDirection(usersLocation, cursorLocation);
 
-                // Stop if no valid location is found.
+                nextLocation = await GetThruVector(usersLocation, facingDirection);
+
                 if (nextLocation != usersLocation)
                 {
-                    // Teleport user.
-                    TeleportUser(newLocation, false);
-
-                    Console.WriteLine($"Teleported thru '{Math.Round(Vector3.Distance(usersLocation, newLocation))}' blocks!");
+                    TeleportUser(nextLocation, true);
+                    Console.WriteLine($"Teleported thru '{Math.Round(Vector3.Distance(usersLocation, nextLocation))}' blocks!");
                     return;
                 }
 
-                // Still stuck, try descending.
-                nextLocation = GetDescendingVector(newLocation);
+                // 3) Still stuck, try descending.
+                nextLocation = await GetDescendingVector(usersLocation);
 
-                // Stop if no valid location is found.
                 if (nextLocation != usersLocation)
                 {
-                    // Teleport user.
-                    TeleportUser(newLocation, false);
-
-                    Console.WriteLine($"Teleported down '1' level!");
+                    TeleportUser(nextLocation, true);
+                    Console.WriteLine("Teleported down '1' level!");
                     return;
                 }
 
                 // Still stuck. How did this happen?
-                Console.WriteLine("Unable to find a suitable location.");
+                // Last resort: Let the game pick something safe near current.
+                TeleportUser(usersLocation, true);
+                Console.WriteLine("Unable to find a suitable location. Attempted safe placement.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /ascend
 
+        [Command("//ascend")]
         [Command("/ascend")]
+        [Command("//asc")]
         [Command("/asc")]
-        private static void ExecuteAscend(string[] args)
+        private async Task ExecuteAscend(string[] args)
         {
             try
             {
@@ -691,7 +904,7 @@ namespace DNA.CastleMinerZ.UI
                 int levelCount = 0;
                 for (int i = 0; i < levels; i++)
                 {
-                    Vector3 nextLocation = GetAscendingVector(newLocation);
+                    Vector3 nextLocation = await GetAscendingVector(newLocation);
 
                     // Stop if no valid location is found.
                     if (nextLocation == newLocation)
@@ -718,16 +931,18 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /decend
 
+        [Command("//descend")]
         [Command("/descend")]
+        [Command("//desc")]
         [Command("/desc")]
-        private static void ExecuteDescend(string[] args)
+        private async Task ExecuteDescend(string[] args)
         {
             try
             {
@@ -741,7 +956,7 @@ namespace DNA.CastleMinerZ.UI
                 int levelCount = 0;
                 for (int i = 0; i < levels; i++)
                 {
-                    Vector3 nextLocation = GetDescendingVector(newLocation);
+                    Vector3 nextLocation = await GetDescendingVector(newLocation);
 
                     // Stop if no valid location is found.
                     if (nextLocation == newLocation)
@@ -768,21 +983,22 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /ceil
 
+        [Command("//ceil")]
         [Command("/ceil")]
-        private static void ExecuteCeil()
+        private async Task ExecuteCeil()
         {
             try
             {
                 // Get the new location offset.
                 Vector3 usersLocation = GetUsersLocation(); // Get the user's current location.
-                Vector3 newLocation = GetCeilingVector(usersLocation);
+                Vector3 newLocation = await GetCeilingVector(usersLocation);
 
                 // Check if a valid location was found.
                 if (newLocation != usersLocation)
@@ -797,38 +1013,97 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /thru
 
+        [Command("//thru")]
         [Command("/thru")]
-        private static void ExecuteThru()
+        private async Task ExecuteThru()
         {
             try
             {
                 // Get the new location offset.
                 Vector3 usersLocation = GetUsersLocation();                                    // Get the user's current location.
                 Vector3 cursorLocation = GetUsersCursorLocation();                             // Get the user's cursor location.
+
+                // If the cursor isn't actually on a solid block, /thru has no wall to pass through.
+                if (!IsValidCursorLocation() || GetBlockFromLocation(cursorLocation) == AirID)
+                {
+                    Console.WriteLine("No wall targeted (aim at a block).");
+                    return;
+                }
+
                 Direction facingDirection = GetFacingDirection(usersLocation, cursorLocation); // Determine the direction the user is facing.
-                Vector3 newLocation = GetThruVector(usersLocation, facingDirection);
+                Vector3 newLocation = await GetThruVector(usersLocation, facingDirection, maxSteps: 512);
 
                 // Check if a valid location was found.
                 if (newLocation != usersLocation)
                 {
-                    // Teleport user.
-                    TeleportUser(newLocation, false);
+                    // Snap down to solid ground below the "thru" exit point.
+                    Vector3 grounded = SnapToGround(newLocation, maxDrop: 96);
 
-                    Console.WriteLine($"Teleported thru '{Math.Round(Vector3.Distance(usersLocation, newLocation))}' blocks!");
+                    // Teleport user.
+                    TeleportUser(grounded, ShouldSpawnOnTop(grounded));
+
+                    // Feel free to comment this out. Can get annoying.
+                    // Console.WriteLine($"Teleported thru '{Math.Round(Vector3.Distance(usersLocation, newLocation))}' blocks!");
                 }
                 else
                     Console.WriteLine("No valid location was found.");
+
+                /// <summary>
+                /// Returns a snapped destination that is standing on solid ground (if found).
+                /// Summary: Drops downward from the candidate location until it finds a walkable spot.
+                /// </summary>
+                Vector3 SnapToGround(Vector3 candidate, int maxDrop = 64)
+                {
+                    Vector3 p = candidate;
+
+                    // Drop down until we either find ground or hit the limit.
+                    for (int i = 0; i < maxDrop; i++)
+                    {
+                        // Feet + head must be clear where we want to stand.
+                        bool feetClear = GetBlockFromLocation(p) == AirID;
+                        bool headClear = GetBlockFromLocation(new Vector3(p.X, p.Y + 1, p.Z)) == AirID;
+
+                        // The block below must be solid.
+                        bool hasGround = GetBlockFromLocation(new Vector3(p.X, p.Y - 1, p.Z)) != AirID;
+
+                        if (feetClear && headClear && hasGround)
+                            return p;
+
+                        // Otherwise keep dropping.
+                        p = new Vector3(p.X, p.Y - 1, p.Z);
+                    }
+
+                    // If we can't find ground within maxDrop, return the original candidate.
+                    return candidate;
+                }
+
+                /// <summary>
+                /// Returns true if teleport should use the game's "spawn on top" safety.
+                /// Summary: If the destination is obstructed, let the game place us safely.
+                /// </summary>
+                bool ShouldSpawnOnTop(Vector3 destination)
+                {
+                    // Need 2 blocks of air at the destination (feet + head).
+                    for (int y = 1; y < 3; y++)
+                    {
+                        Vector3 check = new Vector3(destination.X, destination.Y + y, destination.Z);
+                        if (GetBlockFromLocation(check) != AirID)
+                            return true; // Blocked -> spawnOnTop.
+                    }
+
+                    return false; // Clear -> direct position OK.
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -837,9 +1112,11 @@ namespace DNA.CastleMinerZ.UI
 
         private static Vector3 lastJumpLocation = new Vector3(0, 0, 0); // Store the last jump location.
 
+        [Command("//jumpto")]
         [Command("/jumpto")]
+        [Command("//j")]
         [Command("/j")]
-        private static void ExecuteJumpTo()
+        private void ExecuteJumpTo()
         {
             try
             {
@@ -847,102 +1124,146 @@ namespace DNA.CastleMinerZ.UI
                 Vector3 usersLocation = GetUsersLocation();        // Get the user's current location.
                 Vector3 cursorLocation = GetUsersCursorLocation(); // Get the user's cursor location.
 
+                // If the cursor isn't actually on a solid block, /thru has no wall to pass through.
+                if (!IsValidCursorLocation() || GetBlockFromLocation(cursorLocation) == AirID)
+                {
+                    Console.WriteLine("No wall targeted (aim at a block).");
+                    return;
+                }
+
                 // Check if a valid location was found. Ensure we don't teleport to the same location twice.
                 if (lastJumpLocation != cursorLocation && cursorLocation != usersLocation)
                 {
                     // Teleport user.
-                    TeleportUser(cursorLocation, false);
+                    // Adjust the position one up so we don't clip into the cursor block.
+                    TeleportUser(new Vector3(cursorLocation.X, cursorLocation.Y + 1, cursorLocation.Z), ShouldSpawnOnTop(cursorLocation));
 
                     // Store this jump location.
                     lastJumpLocation = cursorLocation;
 
                     // Feel free to comment this out. Can get annoying.
-                    Console.WriteLine($"Teleported '{Math.Round(Vector3.Distance(usersLocation, cursorLocation))}' blocks away!");
+                    // Console.WriteLine($"Teleported '{Math.Round(Vector3.Distance(usersLocation, cursorLocation))}' blocks away!");
                 }
                 // else
                     // Console.WriteLine("No valid location was found.");
+
+                /// <summary>
+                /// Returns true if teleport should use the game's "spawn on top" safety.
+                /// Summary: If the destination is obstructed, let the game place us safely.
+                /// </summary>
+                bool ShouldSpawnOnTop(Vector3 destination)
+                {
+                    // Need 2 blocks of air (feet + head).
+                    for (int y = 1; y < 3; y++)
+                    {
+                        Vector3 check = new Vector3(destination.X, destination.Y + y, destination.Z);
+                        if (GetBlockFromLocation(check) != AirID)
+                            return true; // Blocked -> spawnOnTop.
+                    }
+
+                    return false; // Clear -> direct position OK.
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /up
 
+        [Command("//up")]
         [Command("/up")]
         private static async void ExecuteUp(string[] args)
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("ERROR: Command usage /up [amount]");
+                Console.WriteLine("ERROR: Command usage /up [amount|max]");
                 return;
             }
 
             try
             {
-                int amount = int.TryParse(args[0], out int a) ? a : 15;
+                string argPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "15";
+
+                int amount;
+                if (argPattern.Equals("max", StringComparison.OrdinalIgnoreCase))
+                    amount = WorldHeights.MaxY - ((int)GetUsersLocation().Y + 2); // Cap to one below max.
+                else
+                    amount = int.TryParse(argPattern, out int a) ? a : 15;
 
                 // Get the new location offset. Convert the offsets into integers.
-                Vector3 upwardsLocation = new Vector3((int)GetUsersLocation().X, (int)GetUsersLocation().Y, (int)GetUsersLocation().Z);
-                upwardsLocation.Y += amount;
+                Vector3 placePos = GetUsersLocation();
+                placePos.Y += amount;
 
                 // Ensure the position is within the bounds of the world.
-                if (upwardsLocation.Y <= WorldHeights.MaxY)
+                if (placePos.Y <= WorldHeights.MaxY)
                 {
-                    PlaceBlock(upwardsLocation, 48);      // GlassMystery.
-                    await Task.Delay(100);                // Add short wait.
-                    upwardsLocation.Y += 1;               // Place user on top. (adjust for your user offset)
-                    TeleportUser(upwardsLocation, false); // Teleport user.
+                    // Place block using cell coords only.
+                    AsyncBlockPlacer.Enqueue(placePos, 48); // GlassMystery.
+                    await Task.Delay(100);                  // Add short wait.
+
+                    // Teleport using centered coords
+                    Vector3 tpPos = new Vector3(placePos.X + 0.5f, placePos.Y + 1.01f, placePos.Z + 0.5f);
+                    TeleportUser(tpPos, false);
 
                     Console.WriteLine($"Teleported up '{amount}' blocks!");
                 }
                 else
-                    Console.WriteLine($"Location 'Y:{Math.Round(upwardsLocation.Y)}' is out of bounds. Max: '{WorldHeights.MaxY}'.");
+                    Console.WriteLine($"Location 'Y:{Math.Round(placePos.Y)}' is out of bounds. Max: '{WorldHeights.MaxY}'.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /down
 
+        [Command("//down")]
         [Command("/down")]
         private static async void ExecuteDown(string[] args)
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("ERROR: Command usage /down [amount]");
+                Console.WriteLine("ERROR: Command usage /down [amount|max]");
                 return;
             }
 
             try
             {
-                int amount = int.TryParse(args[0], out int a) ? a : 15;
+                string argPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "15";
+
+                int amount;
+                if (argPattern.Equals("max", StringComparison.OrdinalIgnoreCase))
+                    amount = (int)GetUsersLocation().Y - (WorldHeights.MinY + 1); // Cap to one above max.
+                else
+                    amount = int.TryParse(argPattern, out int a) ? a : 15;
 
                 // Get the new location offset. Convert the offsets into integers.
-                Vector3 upwardsLocation = new Vector3((int)GetUsersLocation().X, (int)GetUsersLocation().Y, (int)GetUsersLocation().Z);
-                upwardsLocation.Y -= amount;
+                Vector3 placePos = GetUsersLocation();
+                placePos.Y -= amount;
 
                 // Ensure the position is within the bounds of the world.
-                if (upwardsLocation.Y >= WorldHeights.MinY)
+                if (placePos.Y >= WorldHeights.MinY)
                 {
-                    PlaceBlock(upwardsLocation, 48);      // GlassMystery.
-                    await Task.Delay(100);                // Add short wait.
-                    upwardsLocation.Y += 1;               // Place user on top. (adjust for your user offset)
-                    TeleportUser(upwardsLocation, false); // Teleport user.
+                    AsyncBlockPlacer.Enqueue(placePos, 48); // GlassMystery.
+                    await Task.Delay(100);                  // Add short wait.
+
+                    // Teleport using centered coords.
+                    Vector3 tpPos = new Vector3(placePos.X + 0.5f, placePos.Y + 1.01f, placePos.Z + 0.5f);
+                    TeleportUser(tpPos, false);
 
                     Console.WriteLine($"Teleported down '{amount}' blocks!");
                 }
                 else
-                    Console.WriteLine($"Location 'Y:{Math.Round(upwardsLocation.Y)}' is out of bounds. Max: '{WorldHeights.MinY}'.");
+                    Console.WriteLine($"Location 'Y:{Math.Round(placePos.Y)}' is out of bounds. Max: '{WorldHeights.MinY}'.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -951,42 +1272,65 @@ namespace DNA.CastleMinerZ.UI
 
         #region /pos
 
+        [Command("//pos")]
         [Command("/pos")]
-        private static void ExecutePos(string[] args)
+        private void ExecutePos(string[] args)
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("ERROR: Command usage /pos [pos1/pos2..]");
+                Console.WriteLine("ERROR: Command usage /pos [1/2] (or use /pos1, /pos2)");
                 return;
             }
 
+            if (!int.TryParse(args[0], out int point))
+                point = 1;
+
+            ExecutePosCore(point);
+        }
+
+        [Command("//pos1")]
+        [Command("/pos1")]
+        private void ExecutePos1()
+        {
+            ExecutePosCore(1);
+        }
+
+        [Command("//pos2")]
+        [Command("/pos2")]
+        private void ExecutePos2()
+        {
+            ExecutePosCore(2);
+        }
+
+        private void ExecutePosCore(int point)
+        {
             try
             {
-                int point = int.TryParse(args[0], out int p) ? p : 1;
-
-                // Check what position to set.
                 if (point == 1)
                     _pointToLocation1 = GetUsersLocation();
                 else if (point == 2)
                     _pointToLocation2 = GetUsersLocation();
-
-                // Ensure point is within range.
-                if (point == 1 || point == 2)
-                    Console.WriteLine($"Position {point} ({(point == 1 ? $"{Math.Round(_pointToLocation1.X)}, {Math.Round(_pointToLocation1.Y)}, {Math.Round(_pointToLocation1.Z)}" : $"{Math.Round(_pointToLocation2.X)}, {Math.Round(_pointToLocation2.Y)}, {Math.Round(_pointToLocation2.Z)}")}) has been set!");
                 else
+                {
                     Console.WriteLine($"Position {point} is not valid!");
+                    return;
+                }
+
+                var v = (point == 1) ? _pointToLocation1 : _pointToLocation2;
+                Console.WriteLine($"Position {point} ({Math.Round(v.X)}, {Math.Round(v.Y)}, {Math.Round(v.Z)}) has been set!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /hpos
 
+        [Command("//hpos")]
         [Command("/hpos")]
-        private static void ExecuteHpos(string[] args)
+        private void ExecuteHpos(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1012,19 +1356,77 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /chunk
 
+        [Command("//chunk")]
         [Command("/chunk")]
-        private static void ExecuteChunk(string[] args)
+        private void ExecuteChunk(string[] args)
         {
             // Decide which point to center on.
             Vector3 chunkLoc = Vector3.Zero;
-            bool useArg = args.Length == 1 && TryParseXYZ(args[0], out chunkLoc);
+            bool useArg = false;
+
+            // Optional radius; default = 1 (just the current chunk).
+            // Semantics (matches /copychunk):
+            //   Radius = 1 -> Just the current chunk (1x1).
+            //   Radius = 2 -> A 3x3 area (chunk + 8 around it).
+            //   Radius = 3 -> A 5x5 area, etc.
+            int radius = 1;
+
+            // Supported forms:
+            //   /chunk
+            //   /chunk 2
+            //   /chunk 100,0,200
+            //   /chunk 2 100,0,200
+            //   /chunk 100,0,200 2
+            if (args.Length == 1)
+            {
+                // If it's an int, treat it as chunkRadius (same as /copychunk).
+                if (!string.IsNullOrWhiteSpace(args[0]) && int.TryParse(args[0], out int r))
+                    radius = r;
+                else
+                    useArg = TryParseXYZ(args[0], out chunkLoc);
+            }
+            else if (args.Length == 2)
+            {
+                // Allow either order: (radius coords) or (coords radius).
+                bool aIsRadius = int.TryParse(args[0], out int rA);
+                bool bIsRadius = int.TryParse(args[1], out int rB);
+
+                bool aIsCoords = TryParseXYZ(args[0], out Vector3 cA);
+                bool bIsCoords = TryParseXYZ(args[1], out Vector3 cB);
+
+                if (aIsRadius && bIsCoords)
+                {
+                    radius = rA;
+                    chunkLoc = cB;
+                    useArg = true;
+                }
+                else if (aIsCoords && bIsRadius)
+                {
+                    radius = rB;
+                    chunkLoc = cA;
+                    useArg = true;
+                }
+                else
+                {
+                    Console.WriteLine("ERROR: Command usage /chunk (chunkRadius|coordinates)");
+                    return;
+                }
+            }
+            else if (args.Length > 2)
+            {
+                Console.WriteLine("ERROR: Command usage /chunk (chunkRadius|coordinates)");
+                return;
+            }
+
+            if (radius < 1)
+                radius = 1;
 
             // If no chunk location was specified or valid, fall back to the users location.
             if (!useArg)
@@ -1034,66 +1436,90 @@ namespace DNA.CastleMinerZ.UI
             int sizeX = ChunkSize.WidthX;
             int sizeZ = ChunkSize.LengthZ;
 
-            int chunkX = FloorDiv((int)Math.Floor(chunkLoc.X), sizeX);
-            int chunkZ = FloorDiv((int)Math.Floor(chunkLoc.Z), sizeZ);
+            int centerChunkX = FloorDiv((int)Math.Floor(chunkLoc.X), sizeX);
+            int centerChunkZ = FloorDiv((int)Math.Floor(chunkLoc.Z), sizeZ);
 
-            // Corner of the chunk (lower X/Z).
-            int minX = chunkX * sizeX;
-            int minZ = chunkZ * sizeZ;
+            // Radius = 1 -> ring = 0 -> 1x1 chunk area.
+            // Radius = 2 -> ring = 1 -> 3x3 chunk area, etc.
+            int ring = radius - 1;
 
-            // Opposite corner (inclusive).
-            int maxX = minX + sizeX - 1;
-            int maxZ = minZ + sizeZ - 1;
+            int minChunkX = centerChunkX - ring;
+            int maxChunkX = centerChunkX + ring;
+            int minChunkZ = centerChunkZ - ring;
+            int maxChunkZ = centerChunkZ + ring;
 
-            // Update selection - full vertical column.
+            // Convert chunk indices -> World coordinates.
+            int minX = minChunkX * sizeX;
+            int maxX = (maxChunkX + 1) * sizeX - 1;
+            int minZ = minChunkZ * sizeZ;
+            int maxZ = (maxChunkZ + 1) * sizeZ - 1;
+
+            // Update selection - Full vertical column.
             _pointToLocation1 = new Vector3(minX, WorldHeights.MinY, minZ);
             _pointToLocation2 = new Vector3(maxX, WorldHeights.MaxY, maxZ);
 
             // Feedback.
-            Console.WriteLine(
-                $"Chunk selected at X:{chunkX} Z:{chunkZ}  " +
-                $"({minX},{WorldHeights.MinY},{minZ}) -> ({maxX},{WorldHeights.MaxY},{maxZ})");
+            if (radius <= 1)
+            {
+                Console.WriteLine(
+                    $"Chunk selected at X:{centerChunkX} Z:{centerChunkZ} " +
+                    $"({minX},{WorldHeights.MinY},{minZ}) -> ({maxX},{WorldHeights.MaxY},{maxZ}).");
+            }
+            else
+            {
+                Console.WriteLine(
+                    $"Chunk selection X:[{minChunkX}..{maxChunkX}] Z:[{minChunkZ}..{maxChunkZ}] " +
+                    $"(center X:{centerChunkX} Z:{centerChunkZ} radius={radius}) " +
+                    $"({minX},{WorldHeights.MinY},{minZ}) -> ({maxX},{WorldHeights.MaxY},{maxZ}).");
+            }
         }
         #endregion
 
         #region /wand
 
+        [Command("//wand")]
         [Command("/wand")]
         private void ExecuteWand(string[] args) // Don't give 'static' for wand command.
         {
+            /*
             if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /wand [on/off]");
                 return;
             }
+            */
 
             try
             {
-                switch (args[0].ToLower())
+                switch (ResolveToggle(args, _wandEnabled))
                 {
-                    case "on":
-                        if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /wand [on/off]"); return; }
+                    case true:
+                        // if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /wand [on/off]"); return; }
 
-                        // Give the user a compass.
-                        /*
-                        _game.LocalPlayer.PlayerInventory.AddInventoryItem(
-                            DNA.CastleMinerZ.Inventory.InventoryItem.CreateItem(WandItemID, 1),
-                            false
-                        );
-                        */
+                        if (WandItemID >= 0)
+                        {
+                            if (!UserHasItem((DNA.CastleMinerZ.Inventory.InventoryItemIDs)WandItemID))
+                                GiveUserItem((DNA.CastleMinerZ.Inventory.InventoryItemIDs)WandItemID);
+                        }
+                        else
+                        {
+                            Console.WriteLine("WandItem is disabled (set to 'none/off'). No item was given.");
+                        }
 
                         Timer wandTimer = new Timer() { Interval = 1 };
                         wandTimer.Tick += WorldWand_Tick;
                         wandTimer.Start();
 
-                        _wandEnabled = true;
+                        _wandEnabled = true; WandEnabled = true;
+                        ActiveWandItemID = WandItemID; // Set the snapshot wand item.
                         Console.WriteLine("Wand Activated!");
                         break;
 
-                    case "off":
-                        if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /wand [on/off]"); return; }
+                    case false:
+                        // if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /wand [on/off]"); return; }
 
-                        _wandEnabled = false;
+                        _wandEnabled = false; WandEnabled = false;
+                        ActiveWandItemID = -1; // Clear the snapshot wand item.
                         Console.WriteLine("Wand Deactivated!");
                         break;
 
@@ -1104,15 +1530,16 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /contract
-        
+
+        [Command("//contract")]
         [Command("/contract")]
-        private static void ExecuteContract(string[] args)
+        private void ExecuteContract(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1188,15 +1615,16 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /shift
 
+        [Command("//shift")]
         [Command("/shift")]
-        private static void ExecuteShift(string[] args)
+        private void ExecuteShift(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1212,7 +1640,7 @@ namespace DNA.CastleMinerZ.UI
                     return;
                 }
 
-                // Parse direction. Use facing direction as the default. 
+                // Parse direction. Use facing direction as the default.
                 Vector3 cursorLocation = GetUsersCursorLocation();
                 Direction dir = GetFacingDirection(_pointToLocation1, cursorLocation);
                 if (args.Length >= 2 &&
@@ -1289,15 +1717,16 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /trim
 
+        [Command("//trim")]
         [Command("/trim")]
-        private static void ExecuteTrim(string[] args)
+        private void ExecuteTrim(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1340,15 +1769,16 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /size
 
+        [Command("//size")]
         [Command("/size")]
-        private static void ExecuteSize(string[] args)
+        private void ExecuteSize(string[] args)
         {
             bool fromClipboard = args.Length >= 1 && args[0].Equals("clipboard", StringComparison.OrdinalIgnoreCase);
 
@@ -1402,8 +1832,9 @@ namespace DNA.CastleMinerZ.UI
 
         #region /count
 
+        [Command("//count")]
         [Command("/count")]
-        private static void ExecuteCount(string[] args)
+        private async Task ExecuteCount(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1429,7 +1860,7 @@ namespace DNA.CastleMinerZ.UI
 
                 // CountRegion(Region region, HashSet<int> maskSet, int ignoreBlock = -1).
                 // Pass the HashSet of block IDs (converted from the array) to CountRegion, along with the ignore block.
-                var regionBlocks = CountRegion(definedRegion, maskSet, ignoreBlock);
+                var regionBlocks = await CountRegion(definedRegion, maskSet, ignoreBlock);
 
                 // Group the blocks by block type (Item2 in the tuple) and count them.
                 var blockCounts = regionBlocks
@@ -1442,7 +1873,7 @@ namespace DNA.CastleMinerZ.UI
                     Console.WriteLine("Blocks found matching the criteria:");
                     foreach (var block in blockCounts)
                     {
-                        Console.WriteLine($"Block ID {block.BlockType}: {block.Count}");
+                        Console.WriteLine($"Block ID {block.BlockType}: {block.Count}.");
                     }
                 }
                 else
@@ -1450,19 +1881,20 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /distr
-        
+
+        [Command("//distr")]
         [Command("/distr")]
-        private static void ExecuteDistr(string[] args)
+        private void ExecuteDistr(string[] args)
         {
             bool fromClipboard = false;
             int  page          = 1;
-        
+
             if (args.Length == 1)
             {
                 if (args[0].Equals("clipboard", StringComparison.OrdinalIgnoreCase))
@@ -1481,17 +1913,17 @@ namespace DNA.CastleMinerZ.UI
                     return;
                 }
                 fromClipboard = true;
-        
+
                 if (!int.TryParse(args[1], out page) || page < 1)
                 {
                     Console.WriteLine("ERROR: Page must be a positive integer.");
                     return;
                 }
             }
-        
+
             // Get IDs: Clipboard or live selection.
             IEnumerable<int> idStream;
-        
+
             if (fromClipboard)
             {
                 if (copiedRegion == null || copiedRegion.Count == 0)
@@ -1508,78 +1940,79 @@ namespace DNA.CastleMinerZ.UI
                     Console.WriteLine("ERROR: You must set /pos1 and /pos2 first.");
                     return;
                 }
-        
+
                 Vector3 min = Vector3.Min(_pointToLocation1, _pointToLocation2);
                 Vector3 max = Vector3.Max(_pointToLocation1, _pointToLocation2);
                 idStream    = EnumerateIdsInRegion(min, max);
             }
-        
+
             // Count occurrences.
             var counts = new Dictionary<int, long>();
             long total = 0;
-        
+
             foreach (int id in idStream)
             {
                 counts[id] = counts.TryGetValue(id, out long c) ? c + 1 : 1;
                 total++;
             }
-        
+
             if (total == 0)
             {
                 Console.WriteLine("Nothing to count: the chosen region is empty.");
                 return;
             }
-        
+
             // Paging.
             const int rowsPerPage = 4;
             int totalPages = (counts.Count + rowsPerPage - 1) / rowsPerPage;
-        
+
             if (page > totalPages)
             {
                 Console.WriteLine($"ERROR: Page {page} is out of range (max {totalPages}).");
                 return;
             }
-        
+
             var ordered = counts.OrderByDescending(p => p.Value)
                                 .Skip((page - 1) * rowsPerPage)
                                 .Take(rowsPerPage);
-        
+
             // Build report.
             var sb = new StringBuilder();
             sb.AppendLine("----------------------------------------------------");
-            sb.AppendLine($"Block distribution ({total:N0} blocks total) | Page {page}/{totalPages}");
+            sb.AppendLine($"Block distribution ({total:N0} blocks total) | Page {page}/{totalPages}.");
             sb.AppendLine("ID / Name                   Count      Share");
             sb.AppendLine("----------------------------------------------------");
-        
+
             foreach (var pair in ordered)
             {
                 int   id    = pair.Key;
                 long  count = pair.Value;
                 double pct  = (double)count / total;
-        
+
                 string name = Enum.IsDefined(typeof(DNA.CastleMinerZ.Terrain.BlockTypeEnum), id)
                             ? Enum.GetName(typeof(DNA.CastleMinerZ.Terrain.BlockTypeEnum), id)
                             : "Unknown";
-        
-                sb.AppendLine($"{id,3} {name,-18} {count,10:N0}    {pct,7:P2}");
+
+                sb.AppendLine($"{id,3} {name,-18} {count,10:N0}    {pct,7:P2}.");
             }
-        
+
             sb.Append("----------------------------------------------------");
             Console.WriteLine(sb.ToString());
         }
         #endregion
 
         #region /expand
-        
+
+        [Command("//expand")]
         [Command("/expand")]
-        private static void ExecuteExpand(string[] args)
+        private void ExecuteExpand(string[] args)
         {
             if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /expand [amount(vert)] (direction)");
                 return;
             }
-        
+
             try
             {
                 // Check for the vertical keyword. If so, only vertically expand the selection to world limits.
@@ -1587,18 +2020,18 @@ namespace DNA.CastleMinerZ.UI
                 {
                     Vector3 minVert = Vector3.Min(_pointToLocation1, _pointToLocation2);
                     Vector3 maxVert = Vector3.Max(_pointToLocation1, _pointToLocation2);
-            
+
                     minVert.Y = WorldHeights.MinY;
                     maxVert.Y = WorldHeights.MaxY;
-            
+
                     _pointToLocation1 = minVert;
                     _pointToLocation2 = maxVert;
-            
+
                     Console.WriteLine(
                         $"Expanded selection vertically to world limits ({WorldHeights.MinY} ? {WorldHeights.MaxY}).");
                     return;
                 }
-    
+
                 if (!int.TryParse(args[0], out int amount) || amount < 0)
                 {
                     Console.WriteLine("ERROR: [amount] must be a positive integer.");
@@ -1657,7 +2090,7 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -1666,8 +2099,9 @@ namespace DNA.CastleMinerZ.UI
 
         #region /set
 
+        [Command("//set")]
         [Command("/set")]
-        private static void ExecuteSet(string[] args)
+        private static async Task ExecuteSet(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1690,10 +2124,10 @@ namespace DNA.CastleMinerZ.UI
                 // Check and make sure the region contains less than a million blocks.
                 // Make 'No' the highlighted option. Helps mitigate issues when using '/tool'.
                 if (CalculateBlockCount(definedRegion.Position1, definedRegion.Position2) > 1000000 &&
-                    MessageBox.Show("This region contains over a million blocks.\n\nDo you want to continue anyways?", 
-                                    "WE: Woah! That's a ton of blocks!", 
-                                    MessageBoxButtons.YesNo, 
-                                    MessageBoxIcon.Warning, 
+                    MessageBox.Show("This region contains over a million blocks.\n\nDo you want to continue anyways?",
+                                    "WE: Woah! That's a ton of blocks!",
+                                    MessageBoxButtons.YesNo,
+                                    MessageBoxIcon.Warning,
                                     MessageBoxDefaultButton.Button2) == DialogResult.No)
                 {
                     Console.WriteLine("Operation canceled.");
@@ -1702,10 +2136,10 @@ namespace DNA.CastleMinerZ.UI
 
                 // FillRegion(Region region, bool hollow, int ignoreBlock = -1).
                 // Check if the to-block pattern is only air, and if so, have the region skip saving it.
-                var region = (blockPatternNumbers.Length == 1 && blockPatternNumbers[0] == AirID) ? FillRegion(definedRegion, hollow, AirID) : FillRegion(definedRegion, hollow);
+                var region = (blockPatternNumbers.Length == 1 && blockPatternNumbers[0] == AirID) ? await FillRegion(definedRegion, hollow, AirID) : await FillRegion(definedRegion, hollow);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -1717,7 +2151,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -1725,21 +2164,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /line
 
+        [Command("//line")]
         [Command("/line")]
-        private static void ExecuteLine(string[] args)
+        private async Task ExecuteLine(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1760,10 +2200,10 @@ namespace DNA.CastleMinerZ.UI
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
 
                 // MakeLine(Region region, int thickness).
-                var region = MakeLine(definedRegion, thickness);
+                var region = await MakeLine(definedRegion, thickness);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -1775,7 +2215,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -1783,23 +2228,26 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /replace
 
+        [Command("//replace")]
         [Command("/replace")]
+        [Command("//rep")]
         [Command("/rep")]
+        [Command("//re")]
         [Command("/re")]
-        private static void ExecuteReplace(string[] args)
+        private async static void ExecuteReplace(string[] args)
         {
             if (args.Length < 2)
             {
@@ -1823,13 +2271,13 @@ namespace DNA.CastleMinerZ.UI
 
                 // Use fill region to define a rectangular area to search in.
                 // FillRegion(Region region, bool hollow, int ignoreBlock = -1).
-                var region = FillRegion(definedRegion, false);
+                var region = await FillRegion(definedRegion, false);
 
                 // Save the existing region and clear the upcoming redo.
                 if (searchPattern == "all")
-                    SaveUndo(region);
+                    await SaveUndo(region);
                 else
-                    SaveUndo(region, saveBlock: searchPatternNumbers);
+                    await SaveUndo(region, saveBlock: searchPatternNumbers);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -1848,7 +2296,12 @@ namespace DNA.CastleMinerZ.UI
                         // Place block if it doesn't already exist. (improves the performance).
                         if (GetBlockFromLocation(blockLocation) != replaceBlock)
                         {
-                            PlaceBlock(blockLocation, replaceBlock);
+                            // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                            if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                                !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)replaceBlock))
+                                TryDestroyCrateAt(blockLocation);
+
+                            AsyncBlockPlacer.Enqueue(blockLocation, replaceBlock);
 
                             // Add block to redo.
                             redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, replaceBlock));
@@ -1857,22 +2310,24 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /allexcept
 
+        [Command("//allexcept")]
         [Command("/allexcept")]
+        [Command("//allex")]
         [Command("/allex")]
-        private static void ExecuteAllExcept(string[] args)
+        private async static void ExecuteAllExcept(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1897,10 +2352,10 @@ namespace DNA.CastleMinerZ.UI
 
                 // Use fill region to define a rectangular area to search in.
                 // FillRegion(Region region, bool hollow, int ignoreBlock = -1).
-                var region = FillRegion(definedRegion, false);
+                var region = await FillRegion(definedRegion, false);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -1921,7 +2376,12 @@ namespace DNA.CastleMinerZ.UI
                         // Place block if it doesn't already exist. (improves the performance).
                         if (GetBlockFromLocation(blockLocation) != replaceBlock)
                         {
-                            PlaceBlock(blockLocation, replaceBlock);
+                            // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                            if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                                !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)replaceBlock))
+                                TryDestroyCrateAt(blockLocation);
+
+                            AsyncBlockPlacer.Enqueue(blockLocation, replaceBlock);
 
                             // Add block to redo.
                             redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, replaceBlock));
@@ -1930,21 +2390,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /overlay
 
+        [Command("//overlay")]
         [Command("/overlay")]
-        private static void ExecuteOverlay(string[] args)
+        private async Task ExecuteOverlay(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1965,10 +2426,10 @@ namespace DNA.CastleMinerZ.UI
 
                 // OverlayObject(Region region, List<int> replaceBlockPattern).
                 var replaceBlockPattern = replacePattern.Split(',').Select(int.Parse).ToList();
-                var region = OverlayObject(definedRegion, replaceBlockPattern);
+                var region = await OverlayObject(definedRegion, replaceBlockPattern);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -1980,7 +2441,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -1988,21 +2454,82 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
+        #region /naturalize
+
+        [Command("//naturalize")]
+        [Command("/naturalize")]
+        [Command("//natur")]
+        [Command("/natur")]
+        private async Task ExecuteNaturalize()
+        {
+            try
+            {
+                // Define location data.
+                Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
+
+                // Build deterministic actions (pos -> new block).
+                // NaturalizeTerrain(Region region).
+                var naturalizedTerrain = await NaturalizeTerrain(definedRegion);
+
+                if (naturalizedTerrain.Count == 0)
+                {
+                    Console.WriteLine("Nothing to change.");
+                    return;
+                }
+
+                // Save the existing region and clear the upcoming redo.
+                await SaveUndo(ExtractVector3HashSet(naturalizedTerrain));
+                ClearRedo();
+
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                foreach (var a in naturalizedTerrain)
+                {
+                    Vector3 pos = a.Item1;
+                    int block = a.Item2;
+
+                    // Place block if it doesn't already exist. (improves the performance).
+                    if (GetBlockFromLocation(pos) != block)
+                    {
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(pos)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(pos);
+
+                        AsyncBlockPlacer.Enqueue(pos, block);
+
+                        // Add block to redo.
+                        redoBuilder.Add(new Tuple<Vector3, int>(pos, block));
+                    }
+                }
+
+                // Save the actions to undo stack.
+                await SaveUndo(redoBuilder);
+
+                Console.WriteLine($"Replaced {redoBuilder.Count} block(s).");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /walls
 
+        [Command("//walls")]
         [Command("/walls")]
-        private static void ExecuteWalls(string[] args)
+        private async Task ExecuteWalls(string[] args)
         {
             if (args.Length == 0)
             {
@@ -2014,7 +2541,7 @@ namespace DNA.CastleMinerZ.UI
             {
                 string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
 
-               // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
+                // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
                 int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
                 if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
@@ -2022,10 +2549,10 @@ namespace DNA.CastleMinerZ.UI
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
 
                 // MakeWalls(Region region).
-                var region = MakeWalls(definedRegion);
+                var region = await MakeWalls(definedRegion);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2034,10 +2561,15 @@ namespace DNA.CastleMinerZ.UI
                     // Get random block from input.
                     int block = GetRandomBlockFromPattern(blockPatternNumbers);
 
-                    // Place block if it doesn't already exist. (improves the performance)
+                    // Place block if it doesn't already exist. (improves the performance).
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -2045,21 +2577,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /smooth
 
+        [Command("//smooth")]
         [Command("/smooth")]
-        private static void ExecuteSmooth(string[] args)
+        private async Task ExecuteSmooth(string[] args)
         {
             try
             {
@@ -2069,11 +2602,11 @@ namespace DNA.CastleMinerZ.UI
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
 
                 // SmoothTerrain(Region region, int iterations).
-                var smoothedTerrain = SmoothTerrain(definedRegion, iterations);
+                var smoothedTerrain = await SmoothTerrain(definedRegion, iterations);
 
                 // Save the existing region and clear the upcoming redo.
                 // Extract and save only the vector locations for the initial save.
-                SaveUndo(ExtractVector3HashSet(smoothedTerrain));
+                await SaveUndo(ExtractVector3HashSet(smoothedTerrain));
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2086,7 +2619,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -2094,21 +2632,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /move
 
+        [Command("//move")]
         [Command("/move")]
-        private static void ExecuteMove(string[] args)
+        private async Task ExecuteMove(string[] args)
         {
             if (args.Length == 0)
             {
@@ -2154,48 +2693,66 @@ namespace DNA.CastleMinerZ.UI
                 Vector3 moveOffset = GetDirectionalUnitOffset(moveDirection) * moveAmount;
 
                 // MoveRegion(Region region, Vector3 moveOffset).
-                var originalBlocks = MoveRegion(definedRegion, moveOffset);
-                
-                SaveUndo(ExtractVector3HashSet(originalBlocks));
+                var originalBlocks = await MoveRegion(definedRegion, moveOffset);
+
+                await SaveUndo(ExtractVector3HashSet(originalBlocks));
                 ClearRedo();
+
+                // Move crate inventories alongside the blocks (container blocks keep their contents).
+                MoveCrateContents(definedRegion, moveOffset);
+
+                // Tracks any location that has a non-air "write" in this move operation.
+                HashSet<Vector3> nonAirTargets = new HashSet<Vector3>();
 
                 // Iterate over each block and perform the move.
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
                 foreach (var i in originalBlocks)
                 {
-                    // Get location of block.
-                    Vector3 blockLocation = i.Item1;
+                    Vector3 blockLocation = i.Item1; // Get location of block.
+                    int block = i.Item2;             // Get block from input.
+
+                    // Record that this position is supposed to end up as a real block.
+                    if (block != AirID)
+                        nonAirTargets.Add(blockLocation);
+
+                    // If this op is an Air write, but we already know this position has a non-air target,
+                    // skip it so Air can't override the real block in overlap moves.
+                    if (block == AirID && nonAirTargets.Contains(blockLocation))
+                        continue;
 
                     // Get block from location.
                     int blockAtLocation = GetBlockFromLocation(blockLocation);
 
-                    // Get block from input.
-                    int block = i.Item2;
-
                     // Place block if it doesn't already exist. (improves the performance)
                     if (blockAtLocation != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
                 Console.WriteLine($"{originalBlocks.Count / 2} blocks have been moved!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /stack
 
+        [Command("//stack")]
         [Command("/stack")]
-        private static void ExecuteStack(string[] args)
+        private async Task ExecuteStack(string[] args)
         {
             try
             {
@@ -2251,11 +2808,11 @@ namespace DNA.CastleMinerZ.UI
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
 
                 // StackRegion(Region region, Direction facingDirection, int stackCount, bool useAir = true).
-                var stackedBlocks = StackRegion(definedRegion, stackDirection, stackCount, useAir);
+                var stackedBlocks = await StackRegion(definedRegion, stackDirection, stackCount, useAir);
 
                 // Save the existing region and clear the upcoming redo.
                 // Extract and save only the vector locations for the initial save.
-                SaveUndo(ExtractVector3HashSet(stackedBlocks));
+                await SaveUndo(ExtractVector3HashSet(stackedBlocks));
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2273,30 +2830,369 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (blockAtLocation != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
+                // Stack crate inventories too (container blocks keep their contents).
+                // NOTE: This preserves the user's clipboard (/copy) sidecar.
+                StackCrateContents(definedRegion, stackDirection, stackCount, overwriteExisting: true);
+
                 // Save the builder to new redo.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{stackedBlocks.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
+        #region /regen
+
+        /// <summary>
+        /// /regen (seed)
+        ///
+        /// Regenerates terrain from the vanilla world generator, but ONLY within the
+        /// current selection (/pos1 and /pos2).
+        ///
+        /// Optional:
+        ///   (seed) -> Uses a temporary/scratch world builder seeded with this value
+        ///             WITHOUT modifying the real world seed or the live terrain builder.
+        /// </summary>
+        [Command("//regen")]
+        [Command("/regen")]
+        private async Task ExecuteRegen(string[] args)
+        {
+            // Capture originals so we can sanity-check / re-stabilize state.
+            var terrain = DNA.CastleMinerZ.Terrain.BlockTerrain.Instance;
+            if (terrain == null || terrain.WorldInfo == null || terrain._worldBuilder == null)
+            {
+                Console.WriteLine("ERROR: /regen - terrain or world builder not ready.");
+                return;
+            }
+
+            int originalWorldSeed = terrain.WorldInfo.Seed;
+
+            // Parse optional seed override.
+            bool hasSeedOverride = false;
+            int regenSeed = originalWorldSeed;
+
+            if (args.Length > 0)
+            {
+                if (!int.TryParse(args[0], out regenSeed))
+                {
+                    Console.WriteLine("ERROR: /regen (seed) - seed must be an integer.");
+                    return;
+                }
+                hasSeedOverride = true;
+            }
+
+            // Require selection (the /chunk can set this, so a chunk-radius mode is unnecessary).
+            if (_pointToLocation1 == default || _pointToLocation2 == default)
+            {
+                Console.WriteLine("ERROR: /regen - You must set /pos1 and /pos2 (or use /chunk) first.");
+                return;
+            }
+
+            try
+            {
+                #region Async Pacing (Budget Stopwatch + Helpers)
+
+                /// <summary>
+                /// Summary: Starts a stopwatch used to enforce a per-frame time budget,
+                /// so long-running loops can yield to the next frame instead of freezing the game.
+                /// </summary>
+                var budget = System.Diagnostics.Stopwatch.StartNew();
+
+                /// <summary>
+                /// Summary: Cooperative "time-slice" helper - yields to the next frame once we exceed a per-frame time budget.
+                /// ~6ms per frame keeps things responsive; tweak 4-10ms depending on feel.
+                /// </summary>
+                async Task YieldIfOverBudget(System.Diagnostics.Stopwatch sw, int budgetMs = 6)
+                {
+                    if (sw.ElapsedMilliseconds >= budgetMs)
+                    {
+                        sw.Restart();
+                        await AsyncFrameYield.NextFrame();
+                    }
+                }
+                #endregion
+
+                #region Selection Bounds + Chunk Bounds
+
+                int sizeX = ChunkSize.WidthX;  // 16.
+                int sizeZ = ChunkSize.LengthZ; // 16.
+
+                int baseY = WorldHeights.MinY;
+                int maxYWorld = WorldHeights.MaxY;
+
+                // Normalize selection bounds (IMPORTANT if pos1 > pos2).
+                int selMinX = (int)Math.Min(_pointToLocation1.X, _pointToLocation2.X);
+                int selMaxX = (int)Math.Max(_pointToLocation1.X, _pointToLocation2.X);
+
+                int selMinY = (int)Math.Min(_pointToLocation1.Y, _pointToLocation2.Y);
+                int selMaxY = (int)Math.Max(_pointToLocation1.Y, _pointToLocation2.Y);
+
+                int selMinZ = (int)Math.Min(_pointToLocation1.Z, _pointToLocation2.Z);
+                int selMaxZ = (int)Math.Max(_pointToLocation1.Z, _pointToLocation2.Z);
+
+                // Clamp Y to world bounds (optional safety).
+                if (selMinY < baseY) selMinY = baseY;
+                if (selMaxY > maxYWorld) selMaxY = maxYWorld;
+
+                int minChunkX = FloorDiv(selMinX, sizeX);
+                int maxChunkX = FloorDiv(selMaxX, sizeX);
+                int minChunkZ = FloorDiv(selMinZ, sizeZ);
+                int maxChunkZ = FloorDiv(selMaxZ, sizeZ);
+
+                #endregion
+
+                #region Build A SCRATCH Builder (Never Touch Live WorldInfo / Live _worldBuilder)
+
+                // Clone WorldInfo so any generator side-effects (spawners/crates/etc) never hit the real world info.
+                DNA.CastleMinerZ.WorldInfo scratchInfo = new DNA.CastleMinerZ.WorldInfo(terrain.WorldInfo);
+
+                // If you want a different seed, set it on the CLONE only (Seed is read-only, private field is "_seed").
+                if (hasSeedOverride)
+                {
+                    var seedField = typeof(DNA.CastleMinerZ.WorldInfo).GetField("_seed",
+                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+                    if (seedField == null)
+                    {
+                        Console.WriteLine("ERROR: /regen - Could not reflect WorldInfo._seed.");
+                        return;
+                    }
+
+                    seedField.SetValue(scratchInfo, regenSeed);
+                }
+
+                // New builder instance backed by scratchInfo (does not affect terrain._worldBuilder).
+                var scratchBuilder = scratchInfo.GetBuilder();
+
+                #endregion
+
+                #region Pre-Pass: Capture Before + TargetPositions (Selection Only)
+
+                var beforeMap = new Dictionary<Vector3, int>();
+                var targetPositions = new HashSet<Vector3>();
+
+                for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++)
+                {
+                    for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++)
+                    {
+                        int chunkMinX = chunkX * sizeX;
+                        int chunkMaxX = chunkMinX + sizeX - 1;
+
+                        int chunkMinZ = chunkZ * sizeZ;
+                        int chunkMaxZ = chunkMinZ + sizeZ - 1;
+
+                        for (int y = baseY; y <= maxYWorld; y++)
+                        {
+                            // Periodically yield while scanning vertical layers to keep the game responsive during large selections.
+                            if ((y & 7) == 0) // Every 8 layers.
+                                await YieldIfOverBudget(budget);
+
+                            for (int x = chunkMinX; x <= chunkMaxX; x++)
+                            {
+                                for (int z = chunkMinZ; z <= chunkMaxZ; z++)
+                                {
+                                    Vector3 pos = new Vector3(x, y, z);
+
+                                    // Skip blocks outside the current 24x24 terrain window.
+                                    DNA.IntVector3 wp = DNA.IntVector3.FromVector3(pos);
+                                    int idx = terrain.MakeIndexFromWorldIndexVector(wp);
+                                    if (idx < 0)
+                                        continue;
+
+                                    int data = terrain.GetBlockAt(idx);
+                                    int oldId = (int)DNA.CastleMinerZ.Terrain.Block.GetTypeIndex(data);
+                                    beforeMap[pos] = oldId;
+
+                                    // Target ONLY inside the selection.
+                                    if (x >= selMinX && x <= selMaxX &&
+                                        y >= selMinY && y <= selMaxY &&
+                                        z >= selMinZ && z <= selMaxZ)
+                                    {
+                                        targetPositions.Add(pos);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Yield after each chunk (or each few chunks) to avoid freezing.
+                        await YieldIfOverBudget(budget);
+                    }
+                }
+
+                if (targetPositions.Count == 0)
+                {
+                    Console.WriteLine("Regen: No valid blocks found inside the requested selection.");
+                    return;
+                }
+
+                await SaveUndo(targetPositions);
+                ClearRedo();
+
+                #endregion
+
+                #region Per-Chunk: Scratch Build + After Snapshot + Restore Before
+
+                var afterMap = new Dictionary<Vector3, int>(beforeMap.Count);
+                int chunkCount = 0;
+
+                for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++)
+                {
+                    for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++)
+                    {
+                        int chunkMinX = chunkX * sizeX;
+                        int chunkMinZ = chunkZ * sizeZ;
+
+                        var chunkCorner = new DNA.IntVector3(chunkMinX, baseY, chunkMinZ);
+
+                        // Convert chunkCorner (world) -> index-space region [16x128x16].
+                        Vector3 chunkCornerVec3 = DNA.IntVector3.ToVector3(chunkCorner);
+                        DNA.IntVector3 regionMin = terrain.MakeIndexVectorFromPosition(chunkCornerVec3);
+                        regionMin.Y = 0;
+
+                        DNA.IntVector3 regionMax = new DNA.IntVector3(
+                            regionMin.X + sizeX - 1,
+                            127,
+                            regionMin.Z + sizeZ - 1);
+
+                        if (!terrain.IsIndexValid(regionMin) || !terrain.IsIndexValid(regionMax))
+                        {
+                            // Chunk is outside the loaded 24x24 window; skip it entirely.
+                            continue;
+                        }
+
+                        chunkCount++;
+
+                        // 1) Fill this chunk region with NumberOfBlocks as a sentinel.
+                        terrain.FillRegion(regionMin, regionMax, DNA.CastleMinerZ.Terrain.BlockTypeEnum.NumberOfBlocks);
+
+                        // 2) Populate chunk using the SCRATCH builder (seed override lives here only).
+                        scratchBuilder.BuildWorldChunk(terrain, chunkCorner);
+
+                        // 3) Replace leftover sentinel with Empty.
+                        terrain.ReplaceRegion(
+                            regionMin,
+                            regionMax,
+                            DNA.CastleMinerZ.Terrain.BlockTypeEnum.NumberOfBlocks,
+                            DNA.CastleMinerZ.Terrain.BlockTypeEnum.Empty);
+
+                        // 4) Snapshot generated types + restore original types (so scratch writes leave no trace).
+                        for (int y = baseY; y <= maxYWorld; y++)
+                        {
+                            // Yield more frequently during per-chunk snapshot/restore to reduce frame hitches while iterating dense block volumes.
+                            if ((y & 3) == 0) // Every 4 layers.
+                                await YieldIfOverBudget(budget);
+
+                            for (int x = chunkMinX; x <= chunkMinX + sizeX - 1; x++)
+                            {
+                                for (int z = chunkMinZ; z <= chunkMinZ + sizeZ - 1; z++)
+                                {
+                                    Vector3 pos = new Vector3(x, y, z);
+
+                                    if (!beforeMap.ContainsKey(pos))
+                                        continue;
+
+                                    DNA.IntVector3 wp = DNA.IntVector3.FromVector3(pos);
+                                    int idx = terrain.MakeIndexFromWorldIndexVector(wp);
+                                    if (idx < 0)
+                                        continue;
+
+                                    int data = terrain.GetBlockAt(idx);
+                                    int newId = (int)DNA.CastleMinerZ.Terrain.Block.GetTypeIndex(data);
+                                    afterMap[pos] = newId;
+
+                                    int oldId = beforeMap[pos];
+                                    int oldDat = DNA.CastleMinerZ.Terrain.Block.SetType(0, (DNA.CastleMinerZ.Terrain.BlockTypeEnum)oldId);
+                                    terrain.SetBlockAt(idx, oldDat);
+                                }
+                            }
+                        }
+
+                        //Yield here if we've exceeded the per-frame time budget, letting the next frame run to avoid stalling.
+                        await YieldIfOverBudget(budget);
+                    }
+                }
+                #endregion
+
+                #region Apply Differences Inside Selection + Redo
+
+                var redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                int changedCount = 0;
+
+                foreach (Vector3 pos in targetPositions)
+                {
+                    int oldId = beforeMap[pos];
+
+                    if (!afterMap.TryGetValue(pos, out int newId))
+                        continue;
+
+                    if (newId == oldId)
+                        continue;
+
+                    AsyncBlockPlacer.Enqueue(pos, newId);
+
+                    redoBuilder.Add(new Tuple<Vector3, int>(pos, newId));
+                    changedCount++;
+                }
+
+                await SaveUndo(redoBuilder);
+
+                Console.WriteLine(
+                    $"Rebuilt {chunkCount} chunk(s) using seed {regenSeed} " +
+                    $"over {targetPositions.Count} selected block(s), {changedCount} changed.");
+
+                #endregion
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+            finally
+            {
+                // Safety: If the live builder had somehow previously been mutated,
+                // re-create it from the real WorldInfo so future chunk-gen uses the real seed again.
+                // (This does NOT change the world seed; it just refreshes the generator instance.)
+                try
+                {
+                    if (terrain != null && terrain.WorldInfo != null)
+                        terrain._worldBuilder = terrain.WorldInfo.GetBuilder();
+                }
+                catch { }
+
+                // Optional sanity warning if something *did* change your real world seed.
+                try
+                {
+                    if (terrain != null && terrain.WorldInfo != null && terrain.WorldInfo.Seed != originalWorldSeed)
+                        Console.WriteLine($"WARN: World seed changed unexpectedly ({originalWorldSeed} -> {terrain.WorldInfo.Seed}).");
+                }
+                catch { }
             }
         }
         #endregion
 
         #region /stretch
 
+        [Command("//stretch")]
         [Command("/stretch")]
+        [Command("//str")]
         [Command("/str")]
-        private static void ExecuteStretch(string[] args)
+        private async Task ExecuteStretch(string[] args)
         {
             try
             {
@@ -2358,7 +3254,7 @@ namespace DNA.CastleMinerZ.UI
                     || stretchDirection == Direction.Up || stretchDirection == Direction.Down)
                 {
                     // StretchRegion(Region region, Direction stretchDirection, double stretchFactor, bool useAir = true).
-                    stretchedBlocks = StretchRegion(definedRegion, stretchDirection, stretchFactor, useAir);
+                    stretchedBlocks = await StretchRegion(definedRegion, stretchDirection, stretchFactor, useAir);
                 }
                 else
                 {
@@ -2368,7 +3264,7 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save current state for undo and clear any existing redo history.
-                SaveUndo(ExtractVector3HashSet(stretchedBlocks));
+                await SaveUndo(ExtractVector3HashSet(stretchedBlocks));
                 ClearRedo();
 
                 // Apply the changed blocks.
@@ -2380,48 +3276,220 @@ namespace DNA.CastleMinerZ.UI
 
                     if (GetBlockFromLocation(newLocation) != blockType)
                     {
-                        PlaceBlock(newLocation, blockType);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(newLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)blockType))
+                            TryDestroyCrateAt(newLocation);
+
+                        AsyncBlockPlacer.Enqueue(newLocation, blockType);
                         redoBuilder.Add(new Tuple<Vector3, int>(newLocation, blockType));
                     }
                 }
 
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
                 Console.WriteLine($"{stretchedBlocks.Count} blocks have been modified!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /spell
 
+        [Command("//spell")]
         [Command("/spell")]
-        private static void ExecuteSpell(string[] args)
+        private async Task ExecuteSpell(string[] args)
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("ERROR: Command usage /spell [words(@linebreak)/(/paste)] [block(,array)] (flip) (rotate)");
+                Console.WriteLine("ERROR: Command usage /spell [(\")words(\")(@linebreak)/(/paste)] [block(,array)] (flip) (rot|rotate) (90|180|270|360)");
                 return;
             }
 
             try
             {
-                string words = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
-                string blockPattern = !string.IsNullOrEmpty(args[1]) ? args[1] : "1";
-                bool flipAxis = args.Length > 2 && args[2].Equals("true", StringComparison.OrdinalIgnoreCase);
-                bool rotate90 = args.Length > 3 && args[3].Equals("true", StringComparison.OrdinalIgnoreCase);
+                int index = 0;
+                string words;
+
+                // Parse the words argument (supports "quoted phrases").
+                if (!string.IsNullOrEmpty(args[0]) && args[0].StartsWith("\""))
+                {
+                    var sb = new StringBuilder();
+
+                    // Strip leading quote from the first token.
+                    string first = args[0].Substring(1);
+
+                    // Case 1: The phrase is a single word.
+                    if (first.EndsWith("\""))
+                    {
+                        // Remove trailing quote too.
+                        first = first.Substring(0, first.Length - 1);
+                        sb.Append(first);
+                        index = 1; // Next arg after the quoted phrase.
+                    }
+                    else
+                    {
+                        // Case 2: Multi-word phrase:
+                        sb.Append(first);
+
+                        for (index = 1; index < args.Length; index++)
+                        {
+                            string part = args[index];
+                            bool endsWithQuote = part.EndsWith("\"");
+
+                            // Add space before every subsequent token.
+                            sb.Append(' ');
+
+                            if (endsWithQuote)
+                            {
+                                // Remove the trailing quote.
+                                string trimmed = part.Substring(0, part.Length - 1);
+                                sb.Append(trimmed);
+                                index++; // Move to arg after the closing quote.
+                                break;
+                            }
+                            else
+                            {
+                                sb.Append(part);
+                            }
+                        }
+                    }
+
+                    words = sb.ToString();
+                }
+                else
+                {
+                    // No quotes -> first token is the word string.
+                    words = args[0];
+                    index = 1;
+                }
+
+                string blockPattern = !string.IsNullOrEmpty(args[index]) ? args[index] : "1";
+                index++;
+
+                // Optional switches:
+                //  - flip:       Place the whole line on the OTHER side of /pos (without mirroring letters).
+                //  - rot/rotate: Rotate text around Y by 0/90/180/270/360 degrees (360 == 0).
+                bool flipSide = false;
+                int rotateDeg = 0;
+
+                // Legacy support:
+                //   /spell "hi" dirt true true  => flipSide=true, rotateDeg=90.
+                bool legacyFlipSeen = false;
+                bool legacyRotSeen = false;
+
+                while (index < args.Length)
+                {
+                    string raw = args[index] ?? string.Empty;
+                    string t = raw.Trim();
+
+                    if (t.Length == 0)
+                    {
+                        index++;
+                        continue;
+                    }
+
+                    // Keyword: flip.
+                    if (t.Equals("flip", StringComparison.OrdinalIgnoreCase) ||
+                        t.Equals("f", StringComparison.OrdinalIgnoreCase))
+                    {
+                        flipSide = true;
+                        index++;
+                        continue;
+                    }
+
+                    // Keyword: rotate / rot / r (optionally followed by degrees).
+                    if (t.Equals("rotate", StringComparison.OrdinalIgnoreCase) ||
+                        t.Equals("rot", StringComparison.OrdinalIgnoreCase) ||
+                        t.Equals("r", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int deg = 90; // Default if no degrees provided.
+                        if (index + 1 < args.Length && TryParseRotationDegrees(args[index + 1], out int parsedDeg))
+                        {
+                            deg = parsedDeg;
+                            index += 2;
+                        }
+                        else
+                        {
+                            index++;
+                        }
+
+                        rotateDeg = deg;
+                        continue;
+                    }
+
+                    // Combined forms: rot90, rotate180, rot=270, rotate=90.
+                    if (TryParseRotationDegreesFromToken(t, out int tokenDeg))
+                    {
+                        rotateDeg = tokenDeg;
+                        index++;
+                        continue;
+                    }
+
+                    // Bare degrees: 90/180/270/360.
+                    if (TryParseRotationDegrees(t, out int bareDeg))
+                    {
+                        rotateDeg = bareDeg;
+                        index++;
+                        continue;
+                    }
+
+                    // Legacy: /spell ... true true.
+                    if (bool.TryParse(t, out bool b))
+                    {
+                        if (!legacyFlipSeen)
+                        {
+                            flipSide = b;
+                            legacyFlipSeen = true;
+                            index++;
+                            continue;
+                        }
+                        if (!legacyRotSeen)
+                        {
+                            rotateDeg = b ? 90 : 0;
+                            legacyRotSeen = true;
+                            index++;
+                            continue;
+                        }
+                    }
+
+                    // Unknown token -> ignore (future-proof).
+                    index++;
+                }
+
+                // Since "MakeWords" is now a background thread, add support to "Clipboard.GetText()".
+                if (string.Equals(words, "/paste", StringComparison.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        string clip = Clipboard.GetText();
+
+                        if (string.IsNullOrWhiteSpace(clip))
+                        {
+                            Console.WriteLine("ERROR: Clipboard is empty or does not contain text.");
+                            return;
+                        }
+
+                        words = clip;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"ERROR: Failed to read clipboard text: {ex.Message}.");
+                        return;
+                    }
+                }
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
                 int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
                 if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
-                // MakeWords(Vector3 pos, string wordString, bool flipAxes = false, bool rotate90 = false).
-                var region = MakeWords(_pointToLocation1, words, flipAxis, rotate90);
+                // MakeWords(Vector3 pos, string wordString, bool flipSide = false, int rotateDegrees = 0).
+                var region = await MakeWords(_pointToLocation1, words, flipSide, rotateDeg);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2433,7 +3501,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -2441,21 +3514,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /hollow
 
+        [Command("//hollow")]
         [Command("/hollow")]
-        private static void ExecuteHollow(string[] args)
+        private async Task ExecuteHollow(string[] args)
         {
             try
             {
@@ -2471,10 +3545,10 @@ namespace DNA.CastleMinerZ.UI
 
                 // HollowObject(Region region, int thickness).
                 var replaceBlockPattern = replacePattern.Split(',').Select(int.Parse).ToList();
-                var region = HollowObject(definedRegion, thickness);
+                var region = await HollowObject(definedRegion, thickness);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2486,7 +3560,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -2494,25 +3573,26 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
-        #region /fill
+        #region /shapefill
 
-        [Command("/fill")]
-        private static void ExecuteFill(string[] args)
+        [Command("//shapefill")]
+        [Command("/shapefill")]
+        private async Task ExecuteShapeFill(string[] args)
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("ERROR: Command usage /fill [block(,array)]");
+                Console.WriteLine("ERROR: Command usage /shapefill [block(,array)]");
                 return;
             }
 
@@ -2527,12 +3607,12 @@ namespace DNA.CastleMinerZ.UI
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
 
-                // FillHollowObject(Region region).
+                // ShapeFill(Region region).
                 var replaceBlockPattern = replacePattern.Split(',').Select(int.Parse).ToList();
-                var region = FillHollowObject(definedRegion);
+                var region = await ShapeFill(definedRegion);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2544,7 +3624,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -2552,25 +3637,26 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /wrap
 
+        [Command("//wrap")]
         [Command("/wrap")]
-        private static void ExecuteWrap(string[] args)
+        private async Task ExecuteWrap(string[] args)
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("ERROR: Command usage /wrap [replace block(,array)] (wrap direction(all)) (exclude direction)");
+                Console.WriteLine("ERROR: Command usage /wrap [replace block(,array)] (wrap direction(s)(all)) (exclude direction(s))");
                 return;
             }
 
@@ -2579,26 +3665,31 @@ namespace DNA.CastleMinerZ.UI
                 string replacePattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "0";
 
                 // Default settings.
-                Direction? wrapDirection = null;
-                Direction? excludeDirection = null;
+                // wrapDirections:    Null => All directions.
+                // excludeDirections: Null/empty => None.
+                HashSet<Direction> wrapDirections = null;
+                HashSet<Direction> excludeDirections = null;
 
-                if (args.Length >= 2 && !string.IsNullOrEmpty(args[1]) && args[1] != "all")
+                if (args.Length >= 2 && !string.IsNullOrEmpty(args[1]))
                 {
-                    if (Enum.TryParse<Direction>(args[1], true, out var parsedWrap))
-                        wrapDirection = parsedWrap;
-                    else
+                    if (!TryParseDirectionList(args[1], out wrapDirections, allowAll: true))
                     {
-                        Console.WriteLine("ERROR: Invalid wrap direction specified.");
+                        Console.WriteLine("ERROR: Invalid wrap direction(s). Use e.g. posX,posZ or x+,z- or 'all'.");
                         return;
                     }
                 }
+
                 if (args.Length >= 3 && !string.IsNullOrEmpty(args[2]))
                 {
-                    if (Enum.TryParse<Direction>(args[2], true, out var parsedExclude))
-                        excludeDirection = parsedExclude;
-                    else
+                    if (args[2].Trim().Equals("all", StringComparison.OrdinalIgnoreCase))
                     {
-                        Console.WriteLine("ERROR: Invalid wrap direction specified.");
+                        Console.WriteLine("ERROR: 'all' is not valid for exclude directions. Use e.g. down,up or d,u.");
+                        return;
+                    }
+
+                    if (!TryParseDirectionList(args[2], out excludeDirections, allowAll: false))
+                    {
+                        Console.WriteLine("ERROR: Invalid exclude direction(s). Use e.g. down,up or d,u or -y,+y.");
                         return;
                     }
                 }
@@ -2610,12 +3701,13 @@ namespace DNA.CastleMinerZ.UI
                 // Define location data.
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
 
-                // WrapObject(Region region, List<int> replaceBlockPattern, Direction? wrapDirection = null, Direction? excludeDirection = null).
-                var replaceBlockPattern = replacePattern.Split(',').Select(int.Parse).ToList();
-                var region = WrapObject(definedRegion, replaceBlockPattern, wrapDirection, excludeDirection);
+                // WrapObject(Region region, List<int> replaceBlockPattern, HashSet<Direction> wrapDirections = null, HashSet<Direction> excludeDirections = null).
+                // NOTE: Use the already-resolved block IDs so enum names like "dirt" work.
+                var replaceBlockPattern = replacePatternNumbers.Distinct().ToList();
+                var region = await WrapObject(definedRegion, replaceBlockPattern, wrapDirections, excludeDirections);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2627,7 +3719,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -2635,21 +3732,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /matrix
 
+        [Command("//matrix")]
         [Command("/matrix")]
-        private static void ExecuteMatrix(string[] args)
+        private async Task ExecuteMatrix(string[] args)
         {
             if (args.Length < 2)
             {
@@ -2693,11 +3791,11 @@ namespace DNA.CastleMinerZ.UI
                 // if (optionalBlockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeMatrix(Vector3 pos, int radius, int spacing, bool enableSnow, int[] optionalBlockPattern).
-                var region = MakeMatrix(_pointToLocation1, radius, spacing, snow, optionalBlockPatternNumbers);
+                var region = await MakeMatrix(_pointToLocation1, radius, spacing, snow, optionalBlockPatternNumbers);
 
                 // Save the existing region and clear the upcoming redo.
                 // Extract and save only the vector locations for the initial save.
-                SaveUndo(ExtractVector3HashSet(region));
+                await SaveUndo(ExtractVector3HashSet(region));
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2706,7 +3804,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -2714,25 +3817,26 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /forest
 
+        [Command("//forest")]
         [Command("/forest")]
-        private static void ExecuteForest(string[] args)
+        private async Task ExecuteForest(string[] args)
         {
             if (args.Length == 0)
             {
-                Console.WriteLine("ERROR: Command usage /forest [density] (max height)");
+                Console.WriteLine("ERROR: Command usage /forest [density] (max height) (snow_radius)");
                 return;
             }
 
@@ -2740,17 +3844,30 @@ namespace DNA.CastleMinerZ.UI
             {
                 // int treeAreaSquared = int.TryParse(args[0], out int a) ? a : 10;
                 int treeDensity = int.TryParse(args[0], out int d) ? d : 20;
-                int treeMaxHeight = args.Length > 1 && int.TryParse(args[1], out int h) ? h : 8;
+                int treeMaxHeight = args.Length > 1 && int.TryParse(args[1], out int h) ? h : -1;
+                int snowRadius = args.Length > 2 && int.TryParse(args[2], out int s) ? Math.Abs(s) : -1;
 
                 // Define location data.
-                Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
+                HashSet<Tuple<Vector3, int>> region;
+                if (snowRadius > 0)
+                {
+                    Vector3 basePosition = _pointToLocation1;
 
-                // MakeForest(Region pos, int density, int max_height).
-                var region = MakeForest(definedRegion, treeDensity, treeMaxHeight);
+                    // MakeForest(Vector3 center, int radius, int density, int max_height).
+                    region = await MakeForest(basePosition, snowRadius, treeDensity, treeMaxHeight);
+                }
+                else
+                {
+                    // Default behavior: Use selected region.
+                    Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
+
+                    // MakeForest(Region pos, int density, int max_height).
+                    region = await MakeForest(definedRegion, treeDensity, treeMaxHeight);
+                }
 
                 // Save the existing region and clear the upcoming redo.
                 // Extract and save only the vector locations for the initial save.
-                SaveUndo(ExtractVector3HashSet(region));
+                await SaveUndo(ExtractVector3HashSet(region));
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2759,7 +3876,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -2767,32 +3889,36 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
-                Console.WriteLine($"Forest built with a density of '{treeDensity}' and with max tree heights of '{treeMaxHeight}'!");
+                if (snowRadius > 0)
+                    Console.WriteLine($"Forest built in a circle of radius '{snowRadius}' with density '{treeDensity}' and max tree heights of '{treeMaxHeight}'!");
+                else
+                    Console.WriteLine($"Forest built with a density of '{treeDensity}' and with max tree heights of '{treeMaxHeight}'!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /tree
 
+        [Command("//tree")]
         [Command("/tree")]
-        private static void ExecuteTree(string[] args)
+        private async Task ExecuteTree(string[] args)
         {
             try
             {
-                int treeMaxHeight = args.Length > 0 && int.TryParse(args[0], out int h) ? h : 8;
+                int treeMaxHeight = args.Length > 0 && int.TryParse(args[0], out int h) ? h : -1;
 
                 // MakeTree(int worldX, int worldZ, int maxHeight).
                 var region = MakeTree((int)_pointToLocation1.X, (int)_pointToLocation1.Z, treeMaxHeight);
 
                 // Save the existing region and clear the upcoming redo.
                 // Extract and save only the vector locations for the initial save.
-                SaveUndo(ExtractVector3HashSet(region));
+                await SaveUndo(ExtractVector3HashSet(region));
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2801,7 +3927,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -2809,21 +3940,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"Tree built with a max possible height of '{treeMaxHeight}'!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /break
 
+        [Command("//break")]
         [Command("/break")]
-        private static void ExecuteBreak(string[] args)
+        private async static void ExecuteBreak(string[] args)
         {
             try
             {
@@ -2851,10 +3983,10 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // FillRegion(Region region, bool hollow, int ignoreBlock = -1).
-                var region = FillRegion(definedRegion, false, AirID);
+                var region = await FillRegion(definedRegion, false, AirID);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2864,12 +3996,17 @@ namespace DNA.CastleMinerZ.UI
                     int block = GetBlockFromLocation(blockLocation);
                     if (string.IsNullOrEmpty(blockPattern) || maskSet.Contains(block))
                     {
-                        PlaceBlock(blockLocation, AirID);
+                        AsyncBlockPlacer.Enqueue(blockLocation, AirID);
 
                         // Try to map the block to its item id. If valid, drop the block as an item.
                         var blockType = (DNA.CastleMinerZ.Terrain.BlockTypeEnum)block;
+                        DropParentItem(blockLocation, blockType);
+
+                        // Legacy drop item (drops raw id, does not map to parent, e.g. CoalOre -> Coal):
+                        /*
                         if (TryMapEnum<DNA.CastleMinerZ.Terrain.BlockTypeEnum, DNA.CastleMinerZ.Inventory.InventoryItemIDs>(blockType, out var item))
                             DropItem(blockLocation, (int)item);
+                        */
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, AirID));
@@ -2877,13 +4014,13 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -2892,8 +4029,9 @@ namespace DNA.CastleMinerZ.UI
 
         #region /floor
 
+        [Command("//floor")]
         [Command("/floor")]
-        private static void ExecuteFloor(string[] args)
+        private async Task ExecuteFloor(string[] args)
         {
             if (args.Length < 2)
             {
@@ -2912,10 +4050,10 @@ namespace DNA.CastleMinerZ.UI
                 if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeFloor(Vector3 pos, int size, bool hollow, int ignoreBlock = -1).
-                var region = MakeFloor(_pointToLocation1, radius, hollow);
+                var region = await MakeFloor(_pointToLocation1, radius, hollow);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2927,7 +4065,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -2935,21 +4078,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /cube
 
+        [Command("//cube")]
         [Command("/cube")]
-        private static void ExecuteCube(string[] args)
+        private async Task ExecuteCube(string[] args)
         {
             if (args.Length < 2)
             {
@@ -2968,10 +4112,10 @@ namespace DNA.CastleMinerZ.UI
                 if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeCube(Vector3 pos, int radii, bool hollow, int ignoreBlock = -1).
-                var region = MakeCube(_pointToLocation1, radii, hollow);
+                var region = await MakeCube(_pointToLocation1, radii, hollow);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -2983,7 +4127,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -2991,21 +4140,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /prism
 
+        [Command("//prism")]
         [Command("/prism")]
-        private static void ExecutePrism(string[] args)
+        private async Task ExecutePrism(string[] args)
         {
             if (args.Length < 3)
             {
@@ -3026,10 +4176,10 @@ namespace DNA.CastleMinerZ.UI
                 if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeTriangularPrism(Vector3 pos, int length, int width, int height, bool hollow, int ignoreBlock = -1).
-                var region = MakeTriangularPrism(_pointToLocation1, length, width, height, hollow);
+                var region = await MakeTriangularPrism(_pointToLocation1, length, width, height, hollow);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -3041,7 +4191,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -3049,21 +4204,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /sphere
 
+        [Command("//sphere")]
         [Command("/sphere")]
-        private static void ExecuteSphere(string[] args)
+        private async Task ExecuteSphere(string[] args)
         {
             if (args.Length < 2)
             {
@@ -3083,10 +4239,10 @@ namespace DNA.CastleMinerZ.UI
                 if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeSphere(Vector3 pos, double radiusX, double radiusY, double radiusZ, bool hollow, int ignoreBlock = -1).
-                var region = MakeSphere(_pointToLocation1, radii, height, radii, hollow);
+                var region = await MakeSphere(_pointToLocation1, radii, height, radii, hollow);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -3098,7 +4254,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -3106,21 +4267,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /pyramid
 
+        [Command("//pyramid")]
         [Command("/pyramid")]
-        private static void ExecutePyramid(string[] args)
+        private async Task ExecutePyramid(string[] args)
         {
             if (args.Length < 2)
             {
@@ -3139,10 +4301,10 @@ namespace DNA.CastleMinerZ.UI
                 if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakePyramid(Vector3 pos, int size, bool hollow, int ignoreBlock = -1).
-                var region = MakePyramid(_pointToLocation1, size, hollow);
+                var region = await MakePyramid(_pointToLocation1, size, hollow);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -3154,7 +4316,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -3162,21 +4329,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /cone
 
+        [Command("//cone")]
         [Command("/cone")]
-        private static void ExecuteCone(string[] args)
+        private async Task ExecuteCone(string[] args)
         {
             if (args.Length < 3)
             {
@@ -3196,10 +4364,10 @@ namespace DNA.CastleMinerZ.UI
                 if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeCone(Vector3 pos, double radiusX, double radiusZ, int height, bool hollow, double thickness, int ignoreBlock = -1).
-                var region = MakeCone(_pointToLocation1, radii, radii, height, hollow, 1);
+                var region = await MakeCone(_pointToLocation1, radii, radii, height, hollow, 1);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -3211,7 +4379,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -3219,22 +4392,24 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /cylinder
 
+        [Command("//cylinder")]
         [Command("/cylinder")]
+        [Command("//cyl")]
         [Command("/cyl")]
-        private static void ExecuteCylinder(string[] args)
+        private async Task ExecuteCylinder(string[] args)
         {
             if (args.Length < 3)
             {
@@ -3254,10 +4429,10 @@ namespace DNA.CastleMinerZ.UI
                 if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeCylinder(Vector3 pos, double radiusX, double radiusZ, int height, bool hollow, int ignoreBlock = -1).
-                var region = MakeCylinder(_pointToLocation1, radii, radii, height, hollow);
+                var region = await MakeCylinder(_pointToLocation1, radii, radii, height, hollow);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -3269,7 +4444,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -3277,21 +4457,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /diamond
 
+        [Command("//diamond")]
         [Command("/diamond")]
-        private static void ExecuteDiamond(string[] args)
+        private async Task ExecuteDiamond(string[] args)
         {
             if (args.Length < 2)
             {
@@ -3311,10 +4492,10 @@ namespace DNA.CastleMinerZ.UI
                 if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeDiamond(Vector3 pos, int size, bool hollow, int ignoreBlock = -1).
-                var region = MakeDiamond(_pointToLocation1, radii, hollow, squared);
+                var region = await MakeDiamond(_pointToLocation1, radii, hollow, squared);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -3326,7 +4507,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -3334,21 +4520,22 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /ring
 
+        [Command("//ring")]
         [Command("/ring")]
-        private static void ExecuteRing(string[] args)
+        private async Task ExecuteRing(string[] args)
         {
             if (args.Length < 2)
             {
@@ -3367,10 +4554,10 @@ namespace DNA.CastleMinerZ.UI
                 if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
                 // MakeRing(Vector3 pos, double radius, bool hollow, int ignoreBlock = -1).
-                var region = MakeRing(_pointToLocation1, radius, hollow);
+                var region = await MakeRing(_pointToLocation1, radius, hollow);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -3382,7 +4569,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -3390,22 +4582,24 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /ringarray
 
+        [Command("//ringarray")]
         [Command("/ringarray")]
+        [Command("//ringa")]
         [Command("/ringa")]
-        private static void ExecuteRingArray(string[] args)
+        private async Task ExecuteRingArray(string[] args)
         {
             if (args.Length < 3)
             {
@@ -3426,10 +4620,10 @@ namespace DNA.CastleMinerZ.UI
                 // MakeRing(Vector3 pos, double radius, bool hollow, int ignoreBlock = -1).
                 HashSet<Vector3> region = new HashSet<Vector3>();
                 for (int i = 0; i < amount; i++)
-                    region.UnionWith(MakeRing(_pointToLocation1, i * space, true));
+                    region.UnionWith(await MakeRing(_pointToLocation1, i * space, true));
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -3441,7 +4635,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -3449,23 +4648,26 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /generate
 
+        [Command("//generate")]
         [Command("/generate")]
+        [Command("//gen")]
         [Command("/gen")]
+        [Command("//g")]
         [Command("/g")]
-        private static void ExecuteGenerate(string[] args)
+        private async Task ExecuteGenerate(string[] args)
         {
             if (args.Length < 2)
             {
@@ -3512,11 +4714,11 @@ namespace DNA.CastleMinerZ.UI
                 Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
 
                 // MakeShape(Vector3 pos, string expression, bool hollow, int ignoreBlock = -1).
-                var region = MakeShape(definedRegion, expression, hollow);
+                var region = await MakeShape(definedRegion, expression, hollow);
 
                 // Save the existing region and clear the upcoming redo.
                 // Extract and save only the vector locations for the initial save.
-                SaveUndo(ExtractVector3HashSet(region));
+                await SaveUndo(ExtractVector3HashSet(region));
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -3533,19 +4735,25 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != blockToUse)
                     {
-                        PlaceBlock(blockLocation, blockToUse);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, blockToUse);
+
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, blockToUse));
                     }
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -3554,9 +4762,11 @@ namespace DNA.CastleMinerZ.UI
 
         #region /schem
 
+        [Command("//schematic")]
         [Command("/schematic")]
+        [Command("//schem")]
         [Command("/schem")]
-        private static void ExecuteSchematic(string[] args)
+        private void ExecuteSchematic(string[] args)
         {
             if (args.Length == 0)
             {
@@ -3634,7 +4844,7 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
                 Clipboard.SetText(ex.Message);
             }
         }
@@ -3642,8 +4852,9 @@ namespace DNA.CastleMinerZ.UI
 
         #region /copy
 
+        [Command("//copy")]
         [Command("/copy")]
-        private static void ExecuteCopy()
+        private async Task ExecuteCopy()
         {
             try
             {
@@ -3651,21 +4862,22 @@ namespace DNA.CastleMinerZ.UI
                 Region region = new Region(_pointToLocation1, _pointToLocation2);
 
                 // Save copy data.
-                CopyRegion(region);
+                await CopyRegion(region);
 
                 Console.WriteLine($"Region was copied.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /cut
 
+        [Command("//cut")]
         [Command("/cut")]
-        private static void ExecuteCut()
+        private async static void ExecuteCut()
         {
             try
             {
@@ -3675,10 +4887,10 @@ namespace DNA.CastleMinerZ.UI
                 // Check and make sure the region contains less than a million blocks.
                 // Make 'No' the highlighted option. Helps mitigate issues when using '/tool'.
                 if (CalculateBlockCount(definedRegion.Position1, definedRegion.Position2) > 1000000 &&
-                    MessageBox.Show("This region contains over a million blocks.\n\nDo you want to continue anyways?", 
-                                    "WE: Woah! That's a ton of blocks!", 
-                                    MessageBoxButtons.YesNo, 
-                                    MessageBoxIcon.Warning, 
+                    MessageBox.Show("This region contains over a million blocks.\n\nDo you want to continue anyways?",
+                                    "WE: Woah! That's a ton of blocks!",
+                                    MessageBoxButtons.YesNo,
+                                    MessageBoxIcon.Warning,
                                     MessageBoxDefaultButton.Button2) == DialogResult.No)
                 {
                     Console.WriteLine("Operation canceled.");
@@ -3686,10 +4898,19 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save copy data.
-                CopyRegion(definedRegion);
+                await CopyRegion(definedRegion);
+
+                // Remove crate entries from the world + notify clients.
+                int minX = (int)Math.Min(definedRegion.Position1.X, definedRegion.Position2.X);
+                int minY = (int)Math.Min(definedRegion.Position1.Y, definedRegion.Position2.Y);
+                int minZ = (int)Math.Min(definedRegion.Position1.Z, definedRegion.Position2.Z);
+                int maxX = (int)Math.Max(definedRegion.Position1.X, definedRegion.Position2.X);
+                int maxY = (int)Math.Max(definedRegion.Position1.Y, definedRegion.Position2.Y);
+                int maxZ = (int)Math.Max(definedRegion.Position1.Z, definedRegion.Position2.Z);
+                DestroyCratesInBounds(minX, minY, minZ, maxX, maxY, maxZ);
 
                 // FillRegion(Region region, bool hollow, int ignoreBlock = -1).
-                var region = FillRegion(definedRegion, false, AirID);
+                var region = await FillRegion(definedRegion, false, AirID);
 
                 // Delete the contents of this region.
                 foreach (Vector3 blockLocation in region)
@@ -3697,7 +4918,7 @@ namespace DNA.CastleMinerZ.UI
                     // Remove blocks that are not already air. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != AirID)
                     {
-                        PlaceBlock(blockLocation, AirID);
+                        AsyncBlockPlacer.Enqueue(blockLocation, AirID);
                     }
                 }
 
@@ -3705,15 +4926,16 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /paste
 
+        [Command("//paste")]
         [Command("/paste")]
-        private static void ExecutePaste(string[] args)
+        private async Task ExecutePaste(string[] args)
         {
             // Ensure the copied clipboard is full.
             if (copiedRegion.Count() == 0)
@@ -3738,11 +4960,11 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // PasteRegion(Region region).
-                var region = PasteRegion(basePosition);
+                var region = await PasteRegion(basePosition);
 
                 // Save the existing region and clear the upcoming redo.
                 // Extract and save only the vector locations for the initial save.
-                SaveUndo(ExtractVector3HashSet(region));
+                await SaveUndo(ExtractVector3HashSet(region));
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -3754,29 +4976,33 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
                     }
                 }
 
+                // Apply crate inventories (sidecar) after enqueueing blocks.
+                PasteClipboardCrates(basePosition, copiedRegion, overwriteExisting: true);
+
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /rotate
 
+        [Command("//rotate")]
         [Command("/rotate")]
-        private static void ExecuteRotate(string[] args)
+        private async Task ExecuteRotate(string[] args)
         {
             // Ensure the copied clipboard is full.
             if (copiedRegion.Count() == 0)
@@ -3794,26 +5020,27 @@ namespace DNA.CastleMinerZ.UI
                 // Ensure all rotations are valid.
                 if (!(IsValidRotation(rotateY) && IsValidRotation(rotateX) && IsValidRotation(rotateZ)))
                 {
-                    Console.WriteLine($"ERROR: One or more rotations are invalid. Use: (90, 180, 240, 360)");
+                    Console.WriteLine($"ERROR: One or more rotations are invalid. Use: (90, 180, 270, 360)");
                     return;
                 }
 
                 // Apply the clipboard rotations.
-                RotateClipboard(rotateX, rotateY, rotateZ);
+                await RotateClipboard(-rotateX, -rotateY, -rotateZ);
 
                 Console.WriteLine($"Clipboard has been rotated by Y: '{rotateY}', X: '{rotateX}', Z: '{rotateZ}' degrees!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /flip
 
+        [Command("//flip")]
         [Command("/flip")]
-        private static void ExecuteFlip(string[] args)
+        private async Task ExecuteFlip(string[] args)
         {
             // Ensure the copied clipboard is full.
             if (copiedRegion.Count() == 0)
@@ -3833,7 +5060,7 @@ namespace DNA.CastleMinerZ.UI
                     Direction facingDirection = GetFacingDirection(GetUsersLocation(), GetUsersCursorLocation());
 
                     // Perform the flip operation
-                    FlipClipboard(facingDirection);
+                    await FlipClipboard(facingDirection);
 
                     Console.WriteLine($"Clipboard has been flipped along '{facingDirection}'!");
                     return;
@@ -3841,7 +5068,7 @@ namespace DNA.CastleMinerZ.UI
                 else if (Enum.TryParse(args[0], true, out Direction flipDirection))
                 {
                     // Perform the flip operation
-                    FlipClipboard(flipDirection);
+                    await FlipClipboard(flipDirection);
 
                     Console.WriteLine($"Clipboard has been flipped along '{flipDirection}'!");
                     return;
@@ -3852,16 +5079,18 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /clearclipboard
 
+        [Command("//clearclipboard")]
         [Command("/clearclipboard")]
+        [Command("//clearc")]
         [Command("/clearc")]
-        private static void ExecuteClearClipboard()
+        private void ExecuteClearClipboard()
         {
             try
             {
@@ -3872,7 +5101,481 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
+        #region /copychunk
+
+        [Command("//copychunk")]
+        [Command("/copychunk")]
+        [Command("//copyc")]
+        [Command("/copyc")]
+        private async Task ExecuteCopyChunk(string[] args)
+        {
+            try
+            {
+                // Optional radius; default 1 = only the current chunk.
+                int radius = 1;
+                if (args.Length > 0 && !string.IsNullOrWhiteSpace(args[0]))
+                {
+                    if (!int.TryParse(args[0], out radius))
+                    {
+                        Console.WriteLine("ERROR: Radius must be an integer. Usage: /copychunk (chunkRadius)");
+                        return;
+                    }
+                }
+
+                if (radius < 1)
+                    radius = 1;
+
+                // Center on the player's current world position.
+                Vector3 center = GetUsersLocation();
+
+                // Chunk dimensions (from WorldEditCore.ChunkSize).
+                int sizeX = ChunkSize.WidthX;
+                int sizeZ = ChunkSize.LengthZ;
+
+                // Which chunk is the player standing in?
+                int centerChunkX = FloorDiv((int)Math.Floor(center.X), sizeX);
+                int centerChunkZ = FloorDiv((int)Math.Floor(center.Z), sizeZ);
+
+                // radius = 1 -> ring 0 (1x1), radius = 2 -> ring 1 (3x3), etc.
+                int ring = radius - 1;
+
+                int minChunkX = centerChunkX - ring;
+                int maxChunkX = centerChunkX + ring;
+                int minChunkZ = centerChunkZ - ring;
+                int maxChunkZ = centerChunkZ + ring;
+
+                // Convert chunk indices -> world coordinates.
+                int minX = minChunkX * sizeX;
+                int maxX = (maxChunkX + 1) * sizeX - 1;
+                int minZ = minChunkZ * sizeZ;
+                int maxZ = (maxChunkZ + 1) * sizeZ - 1;
+
+                Vector3 pos1 = new Vector3(minX, WorldHeights.MinY, minZ);
+                Vector3 pos2 = new Vector3(maxX, WorldHeights.MaxY, maxZ);
+
+                Region region = new Region(pos1, pos2);
+
+                // Fill copiedChunk.
+                await CopyChunk(region);
+
+                int chunksWide = (maxChunkX - minChunkX + 1);
+                int chunksDeep = (maxChunkZ - minChunkZ + 1);
+                int chunkCount = chunksWide * chunksDeep;
+
+                Console.WriteLine(
+                    $"Copied {chunkCount} chunk(s) [{minChunkX}..{maxChunkX}]x[{minChunkZ}..{maxChunkZ}] " +
+                    $"(center chunk X:{centerChunkX}, Z:{centerChunkZ}, radius={radius}).");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
+        #region /cutchunk
+
+        [Command("//cutchunk")]
+        [Command("/cutchunk")]
+        [Command("//cutc")]
+        [Command("/cutc")]
+        private async Task ExecuteCutChunk(string[] args)
+        {
+            try
+            {
+                // Optional radius; default = 1 (just the current chunk).
+                int radius = 1;
+                if (args.Length > 0 && !string.IsNullOrWhiteSpace(args[0]))
+                {
+                    if (!int.TryParse(args[0], out radius))
+                    {
+                        Console.WriteLine("ERROR: Radius must be an integer. Usage: /cutchunk (chunkRadius)");
+                        return;
+                    }
+                }
+
+                if (radius < 1)
+                    radius = 1;
+
+                // Center on the player's current world position.
+                Vector3 center = GetUsersLocation();
+
+                // Chunk dimensions (from WorldEditCore.ChunkSize).
+                int sizeX = ChunkSize.WidthX;
+                int sizeZ = ChunkSize.LengthZ;
+
+                // Which chunk is the player standing in?
+                int centerChunkX = FloorDiv((int)Math.Floor(center.X), sizeX);
+                int centerChunkZ = FloorDiv((int)Math.Floor(center.Z), sizeZ);
+
+                // radius = 1 -> ring = 0 -> 1x1 chunk area
+                // radius = 2 -> ring = 1 -> 3x3 chunk area, etc.
+                int ring = radius - 1;
+
+                int minChunkX = centerChunkX - ring;
+                int maxChunkX = centerChunkX + ring;
+                int minChunkZ = centerChunkZ - ring;
+                int maxChunkZ = centerChunkZ + ring;
+
+                // Convert chunk indices -> world coordinates.
+                int minX = minChunkX * sizeX;
+                int maxX = (maxChunkX + 1) * sizeX - 1;
+                int minZ = minChunkZ * sizeZ;
+                int maxZ = (maxChunkZ + 1) * sizeZ - 1;
+
+                Vector3 pos1 = new Vector3(minX, WorldHeights.MinY, minZ);
+                Vector3 pos2 = new Vector3(maxX, WorldHeights.MaxY, maxZ);
+                Region definedRegion = new Region(pos1, pos2);
+
+                // Safety: warn if this is huge, same as /cut.
+                if (CalculateBlockCount(definedRegion.Position1, definedRegion.Position2) > 1000000 &&
+                    MessageBox.Show("This region contains over a million blocks.\n\nDo you want to continue anyways?",
+                                    "WE: Woah! That's a ton of blocks!",
+                                    MessageBoxButtons.YesNo,
+                                    MessageBoxIcon.Warning,
+                                    MessageBoxDefaultButton.Button2) == DialogResult.No)
+                {
+                    Console.WriteLine("Operation canceled.");
+                    return;
+                }
+
+                // 1) Copy the chunk area into the chunk clipboard.
+                await CopyChunk(definedRegion);
+
+                // Remove crate entries from the world + notify clients.
+                int chunkMinX = (int)Math.Min(definedRegion.Position1.X, definedRegion.Position2.X);
+                int chunkMinY = (int)Math.Min(definedRegion.Position1.Y, definedRegion.Position2.Y);
+                int chunkMinZ = (int)Math.Min(definedRegion.Position1.Z, definedRegion.Position2.Z);
+                int chunkMaxX = (int)Math.Max(definedRegion.Position1.X, definedRegion.Position2.X);
+                int chunkMaxY = (int)Math.Max(definedRegion.Position1.Y, definedRegion.Position2.Y);
+                int chunkMaxZ = (int)Math.Max(definedRegion.Position1.Z, definedRegion.Position2.Z);
+                DestroyCratesInBounds(chunkMinX, chunkMinY, chunkMinZ, chunkMaxX, chunkMaxY, chunkMaxZ);
+
+                // 2) Build a list of all non-air blocks in that region (full height).
+                //    FillRegion(Region region, bool hollow, int ignoreBlock = -1).
+                var regionBlocks = await FillRegion(definedRegion, hollow: false, ignoreBlock: AirID);
+
+                // --- Undo support (default): save what we're about to delete, then clear redo. ---
+                await SaveUndo(regionBlocks);
+                ClearRedo();
+
+                // 3) Delete the contents of this chunk region + build redo snapshot.
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+
+                // 3) Delete the contents of this chunk region.
+                foreach (Vector3 blockLocation in regionBlocks)
+                {
+                    // Remove blocks that are not already air (performance).
+                    if (GetBlockFromLocation(blockLocation) != AirID)
+                    {
+                        AsyncBlockPlacer.Enqueue(blockLocation, AirID);
+
+                        // Redo should re-apply the deletion.
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, AirID));
+                    }
+                }
+
+                // Save the "after" snapshot so /undo and /redo both work.
+                await SaveUndo(redoBuilder);
+
+                int chunksWide = (maxChunkX - minChunkX + 1);
+                int chunksDeep = (maxChunkZ - minChunkZ + 1);
+                int chunkCount = chunksWide * chunksDeep;
+
+                Console.WriteLine(
+                    $"Cut and copied {chunkCount} chunk(s) " +
+                    $"[{minChunkX}..{maxChunkX}]x[{minChunkZ}..{maxChunkZ}] " +
+                    $"(center chunk X:{centerChunkX}, Z:{centerChunkZ}, radius={radius}).");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
+        #region /pastechunk
+
+        [Command("//pastechunk")]
+        [Command("/pastechunk")]
+        [Command("//pastec")]
+        [Command("/pastec")]
+        private async Task ExecutePasteChunk(string[] args)
+        {
+            // Ensure the chunk clipboard is full.
+            if (copiedChunk.Count == 0)
+            {
+                Console.WriteLine("ERROR: Chunk clipboard is empty. Use /copychunk first.");
+                return;
+            }
+
+            try
+            {
+                // Optional: "false" anywhere => skip air blocks.
+                bool useAir = args.Any(a => a.Equals("false", StringComparison.OrdinalIgnoreCase)) == false;
+
+                // Optional: "force" or "override" anywhere => bypass alignment check.
+                bool forceMisaligned = args.Any(a =>
+                    a.Equals("force", StringComparison.OrdinalIgnoreCase) ||
+                    a.Equals("override", StringComparison.OrdinalIgnoreCase));
+
+                // --- Derive clipboard dimensions from copiedChunk. ---
+
+                int maxOffsetX = int.MinValue;
+                int maxOffsetY = int.MinValue;
+                int maxOffsetZ = int.MinValue;
+
+                foreach (var entry in copiedChunk)
+                {
+                    Vector3 v = entry.Item1;
+                    if (v.X > maxOffsetX) maxOffsetX = (int)v.X;
+                    if (v.Y > maxOffsetY) maxOffsetY = (int)v.Y;
+                    if (v.Z > maxOffsetZ) maxOffsetZ = (int)v.Z;
+                }
+
+                int widthX = maxOffsetX + 1;
+                int heightY = maxOffsetY + 1;
+                int lengthZ = maxOffsetZ + 1;
+
+                int sizeX = ChunkSize.WidthX;
+                int sizeZ = ChunkSize.LengthZ;
+
+                // Sanity check: Must align with chunk grid, unless forced.
+                if ((widthX % sizeX != 0 || lengthZ % sizeZ != 0) && !forceMisaligned)
+                {
+                    Console.WriteLine("ERROR: Copied chunk data is not aligned to chunk size. " +
+                                      "Did you use /copychunk to create it? " +
+                                      "Use '/pastechunk force' to override.");
+                    return;
+                }
+                else if (widthX % sizeX != 0 || lengthZ % sizeZ != 0)
+                {
+                    Console.WriteLine("WARN: Copied data is not aligned to chunk size; forcing paste anyway.");
+                }
+
+                // Make sure we never end up with 0 chunks if misaligned.
+                int chunksX = Math.Max(1, widthX / sizeX);
+                int chunksZ = Math.Max(1, lengthZ / sizeZ);
+
+                // --- Figure out where to paste around the current chunk. ---
+
+                Vector3 player = GetUsersLocation();
+
+                int playerChunkX = FloorDiv((int)Math.Floor(player.X), sizeX);
+                int playerChunkZ = FloorDiv((int)Math.Floor(player.Z), sizeZ);
+
+                // For odd chunk counts, this centers the area on the player's chunk.
+                int ringX = (chunksX - 1) / 2;
+                int ringZ = (chunksZ - 1) / 2;
+
+                int minChunkX = playerChunkX - ringX;
+                int minChunkZ = playerChunkZ - ringZ;
+
+                int minX = minChunkX * sizeX;
+                int minZ = minChunkZ * sizeZ;
+
+                // For Y, always anchor to world base (same as when copying).
+                int baseY = WorldHeights.MinY;
+
+                Vector3 baseLocation = new Vector3(minX, baseY, minZ);
+
+                // --- Build destination set for undo (before we change anything). ---
+
+                HashSet<Vector3> dstPositions = new HashSet<Vector3>();
+                foreach (var entry in copiedChunk)
+                {
+                    dstPositions.Add(baseLocation + entry.Item1);
+                }
+
+                await SaveUndo(dstPositions);
+                ClearRedo();
+
+                // --- Place blocks and build redo snapshot. ---
+
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+
+                foreach (var (offset, block) in copiedChunk)
+                {
+                    Vector3 destPos = baseLocation + offset;
+
+                    if (!useAir && block == AirID)
+                        continue;
+
+                    // Place block only if it actually changes something.
+                    if (GetBlockFromLocation(destPos) != block)
+                    {
+                        AsyncBlockPlacer.Enqueue(destPos, block);
+                        redoBuilder.Add(new Tuple<Vector3, int>(destPos, block));
+                    }
+                }
+
+                // Apply crate inventories (sidecar) after enqueueing blocks.
+                PasteClipboardCrates(baseLocation, copiedChunk, overwriteExisting: true);
+
+                await SaveUndo(redoBuilder);
+
+                int chunkCount = chunksX * chunksZ;
+                Console.WriteLine($"Pasted {redoBuilder.Count} block(s) into {chunkCount} chunk(s) around you.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
+        #region /delchunk
+
+        [Command("//delchunk")]
+        [Command("/delchunk")]
+        [Command("//delc")]
+        [Command("/delc")]
+        private async Task ExecuteDelChunk(string[] args)
+        {
+            try
+            {
+                // Defaults.
+                int radius = 1;
+                bool recordHistory = true;
+
+                // Parse args (order-independent):
+                // - First int => radius.
+                // - Optional flags => true/noundo/nohistory/skipundo.
+                if (args != null && args.Length > 0)
+                {
+                    foreach (string a in args)
+                    {
+                        if (string.IsNullOrWhiteSpace(a))
+                            continue;
+
+                        if (a.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                            a.Equals("noundo", StringComparison.OrdinalIgnoreCase) ||
+                            a.Equals("nohistory", StringComparison.OrdinalIgnoreCase) ||
+                            a.Equals("skipundo", StringComparison.OrdinalIgnoreCase))
+                        {
+                            recordHistory = false;
+                            continue;
+                        }
+
+                        if (int.TryParse(a, out int parsed))
+                        {
+                            radius = parsed;
+                            continue;
+                        }
+
+                        Console.WriteLine($"ERROR: Unknown argument '{a}'. Usage: /delchunk (chunkRadius) (noundo)");
+                        return;
+                    }
+                }
+
+                if (radius < 1)
+                    radius = 1;
+
+                // Center on the player's current world position.
+                Vector3 center = GetUsersLocation();
+
+                // Chunk dimensions (from WorldEditCore.ChunkSize).
+                int sizeX = ChunkSize.WidthX;
+                int sizeZ = ChunkSize.LengthZ;
+
+                // Which chunk is the player standing in?
+                int centerChunkX = FloorDiv((int)Math.Floor(center.X), sizeX);
+                int centerChunkZ = FloorDiv((int)Math.Floor(center.Z), sizeZ);
+
+                // radius = 1 -> ring = 0 -> 1x1 chunk area
+                // radius = 2 -> ring = 1 -> 3x3 chunk area, etc.
+                int ring = radius - 1;
+
+                int minChunkX = centerChunkX - ring;
+                int maxChunkX = centerChunkX + ring;
+                int minChunkZ = centerChunkZ - ring;
+                int maxChunkZ = centerChunkZ + ring;
+
+                // Convert chunk indices -> world coordinates.
+                int minX = minChunkX * sizeX;
+                int maxX = (maxChunkX + 1) * sizeX - 1;
+                int minZ = minChunkZ * sizeZ;
+                int maxZ = (maxChunkZ + 1) * sizeZ - 1;
+
+                Vector3 pos1 = new Vector3(minX, WorldHeights.MinY, minZ);
+                Vector3 pos2 = new Vector3(maxX, WorldHeights.MaxY, maxZ);
+                Region definedRegion = new Region(pos1, pos2);
+
+                // Safety: warn if this is huge, same as /cut.
+                if (CalculateBlockCount(definedRegion.Position1, definedRegion.Position2) > 1000000 &&
+                    MessageBox.Show("This region contains over a million blocks.\n\nDo you want to continue anyways?",
+                                    "WE: Woah! That's a ton of blocks!",
+                                    MessageBoxButtons.YesNo,
+                                    MessageBoxIcon.Warning,
+                                    MessageBoxDefaultButton.Button2) == DialogResult.No)
+                {
+                    Console.WriteLine("Operation canceled.");
+                    return;
+                }
+
+                // Build a list of all non-air blocks in that region (full height).
+                // FillRegion(Region region, bool hollow, int ignoreBlock = -1).
+                var regionBlocks = await FillRegion(definedRegion, hollow: false, ignoreBlock: AirID);
+
+                if (regionBlocks.Count == 0)
+                {
+                    Console.WriteLine("Nothing to delete (all air).");
+                    return;
+                }
+
+                // Undo snapshot (BEFORE).
+                if (recordHistory)
+                {
+                    await SaveUndo(regionBlocks);
+
+                    // Any new edit invalidates redo history.
+                    ClearRedo();
+                }
+
+                // Redo snapshot (AFTER).
+                HashSet<Tuple<Vector3, int>> redoBuilder = recordHistory
+                    ? new HashSet<Tuple<Vector3, int>>()
+                    : null;
+
+                foreach (Vector3 blockLocation in regionBlocks)
+                {
+                    // Remove blocks that are not already air (performance/safety).
+                    if (GetBlockFromLocation(blockLocation) != AirID)
+                    {
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, AirID);
+
+                        if (recordHistory)
+                            redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, AirID));
+                    }
+                }
+
+                if (recordHistory)
+                    await SaveUndo(redoBuilder);
+
+                int chunksWide = (maxChunkX - minChunkX + 1);
+                int chunksDeep = (maxChunkZ - minChunkZ + 1);
+                int chunkCount = chunksWide * chunksDeep;
+
+                int deleted = recordHistory ? redoBuilder.Count : regionBlocks.Count;
+
+                Console.WriteLine(
+                    $"Deleted {deleted} block(s) in {chunkCount} chunk(s) " +
+                    $"[{minChunkX}..{maxChunkX}]x[{minChunkZ}..{maxChunkZ}] " +
+                    $"(center chunk X:{centerChunkX}, Z:{centerChunkZ}, radius={radius})" +
+                    (recordHistory ? "." : " (history skipped)."));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -3881,6 +5584,7 @@ namespace DNA.CastleMinerZ.UI
 
         #region /tool
 
+        [Command("//tool")]
         [Command("/tool")]
         private void ExecuteTool(string[] args) // Don't give 'static' for tool command.
         {
@@ -3897,29 +5601,30 @@ namespace DNA.CastleMinerZ.UI
                 switch (args[0].ToLower())
                 {
                     case "on":
-                        if (args.Length != 2) { Console.WriteLine("ERROR: Missing parameter. Usage: /tool [on/off] [/command]"); return; }
+                        if (args.Length < 2) { Console.WriteLine("ERROR: Missing parameter. Usage: /tool [on/off] [/command]"); return; }
 
                         _toolCommand = args.Length >= 2 ? string.Join(" ", args.Skip(1)) : string.Empty;
-                        _toolItem = GetUsersHeldItem();
+                        _toolItem = ActiveToolItemID = GetUsersHeldItem(); // Set the snapshot tool item.
 
                         Timer toolTimer = new Timer() { Interval = 1 };
                         toolTimer.Tick += WorldTool_Tick;
                         toolTimer.Start();
 
-                        _toolEnabled = true;
-                        Console.WriteLine($"Tool Activated! Command: {_toolCommand}");
+                        _toolEnabled = true; ToolEnabled = true;
+                        Console.WriteLine($"Tool Activated! Command: {_toolCommand}.");
                         break;
 
                     case "off":
-                        _toolEnabled = false;
+                        _toolEnabled = false; ToolEnabled = false;
+                        ActiveToolItemID = -1; // Clear the snapshot tool item.
                         Console.WriteLine("Tool Deactivated!");
                         break;
 
                     case "command":
-                        if (args.Length != 2) { Console.WriteLine("ERROR: Missing parameter. Usage: /tool [on/off] [/command]"); return; }
+                        if (args.Length < 2) { Console.WriteLine("ERROR: Missing parameter. Usage: /tool [on/off] [/command]"); return; }
 
                         _toolCommand = args.Length >= 2 ? string.Join(" ", args.Skip(1)) : string.Empty;
-                        Console.WriteLine($"New Tool Command: {_toolCommand}");
+                        Console.WriteLine($"New Tool Command: {_toolCommand}.");
                         break;
 
                     default:
@@ -3929,7 +5634,110 @@ namespace DNA.CastleMinerZ.UI
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
+        #region /navwand
+
+        [Command("//navwand")]
+        [Command("/navwand")]
+        private void ExecuteNavWand(string[] args)
+        {
+            // Summary:
+            // - /navwand                -> Toggle on/off
+            // - /navwand on|off|toggle  -> Explicit toggle state
+            // - /navwand <item|id|none> -> Set nav-wand item or disable it
+            //
+            // Lite behavior:
+            // - No config file
+            // - No persistence between sessions
+            // - Uses NavWandItemID / NavWandItemPreviousID in memory only
+
+            try
+            {
+                // If the first argument is not a toggle token, treat it as an item assignment.
+                if (args != null && args.Length >= 1 && !string.IsNullOrWhiteSpace(args[0]) && !IsToggleToken(args[0]))
+                {
+                    string token = (args[0] ?? "").Trim();
+
+                    // Explicit disable via "/navwand none".
+                    if (IsDisabledToken(token))
+                    {
+                        if (NavWandItemID != -1)
+                            NavWandItemPreviousID = NavWandItemID;
+
+                        NavWandItemID = -1;
+                        ActiveNavWandItemID = -1;
+
+                        string prevName = GetInventoryItemNameSafe(NavWandItemPreviousID);
+
+                        Console.WriteLine(
+                            !string.IsNullOrWhiteSpace(prevName)
+                                ? $"NavWand Disabled! (NavWandItem = none) | Previous item saved: {prevName}."
+                                : "NavWand Disabled! (NavWandItem = none).");
+
+                        return;
+                    }
+
+                    // Set the item by enum name or numeric id.
+                    if (!TryResolveInventoryItemToken(token, out string normalized, out int resolvedItemID))
+                    {
+                        Console.WriteLine($"ERROR: Unknown item '{token}'. Usage: /navwand (on|off|item|id|none).");
+                        return;
+                    }
+
+                    NavWandItemID = resolvedItemID;
+                    NavWandItemPreviousID = resolvedItemID;
+                    ActiveNavWandItemID = resolvedItemID;
+
+                    // Reset the click latch after changing the nav-wand item.
+                    _navWandRunTimes = 0;
+
+                    Console.WriteLine($"NavWand Item set to: {normalized} (enabled).");
+                    return;
+                }
+
+                // Toggle on/off.
+                bool isEnabled = NavWandItemID != -1;
+                bool enable = ResolveToggle(args, isEnabled);
+
+                if (!enable)
+                {
+                    // Disabling: remember current item, then disable.
+                    if (NavWandItemID != -1)
+                        NavWandItemPreviousID = NavWandItemID;
+
+                    NavWandItemID = -1;
+                    ActiveNavWandItemID = -1;
+
+                    string prevName = GetInventoryItemNameSafe(NavWandItemPreviousID);
+
+                    Console.WriteLine(
+                        !string.IsNullOrWhiteSpace(prevName)
+                            ? $"NavWand Disabled! (NavWandItem = none) | Previous item saved: {prevName}."
+                            : "NavWand Disabled! (NavWandItem = none).");
+
+                    return;
+                }
+
+                // Enabling: restore previous item, else fall back to Compass.
+                int restoreItemID = (NavWandItemPreviousID != -1)
+                    ? NavWandItemPreviousID
+                    : (int)DNA.CastleMinerZ.Inventory.InventoryItemIDs.Compass;
+
+                NavWandItemID = restoreItemID;
+                ActiveNavWandItemID = restoreItemID;
+
+                // Reset the nav-wand click latch after enabling.
+                _navWandRunTimes = 0;
+
+                Console.WriteLine($"NavWand Enabled! (NavWandItem = {GetInventoryItemNameSafe(restoreItemID)}).");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -3938,19 +5746,18 @@ namespace DNA.CastleMinerZ.UI
 
         #region /brush
 
+        [Command("//brush")]
         [Command("/brush")]
+        [Command("//br")]
         [Command("/br")]
         private void ExecuteBrush(string[] args) // Don't give 'static' for brush command.
         {
             if (args.Length == 0)
             {
                 Console.WriteLine("ERROR: Command usage /brush [on/off] (block(,array)) (size),\n" +
-                                  "    /brush block [block(,array)],\n" +
-                                  "    /brush shape [shape],\n" +
-                                  "    /brush size [size],\n" +
-                                  "    /brush height [height],\n" +
-                                  "    /brush hollow [true/false],\n" +
-                                  "    /brush replace [true/false],\n" +
+                                  "    /brush block [block(,array)] | /brush shape [shape],\n" +
+                                  "    /brush size [size]           | /brush height [height],\n" +
+                                  "    /brush hollow [true/false]   | /brush replace [true/false],\n" +
                                   "    /brush rapid [true/false]"
                 );
                 return;
@@ -3971,14 +5778,14 @@ namespace DNA.CastleMinerZ.UI
                             int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
                             if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
-                            _brushItem = GetUsersHeldItem();                                                   // Or use 'WandItemID'.
+                            _brushItem         = ActiveBrushItemID = GetUsersHeldItem();                               // Or use 'WandItemID'. // Set the snapshot brush item.
                             _brushBlockPattern = blockPattern;
-                            _brushSize = args.Length > 2 && int.TryParse(args[2], out int s) ? s : _brushSize; // If value is not set, keep set value.
+                            _brushSize         = args.Length > 2 && int.TryParse(args[2], out int s) ? s : _brushSize; // If value is not set, keep set value.
 
                             // Turn off brushing commands.
-                            _brushReplaceMode = false;
-                            _brushRapidMode = false;
-                            _brushRunTimes = 0;
+                            _brushReplaceMode  = false;
+                            _brushRapidMode    = false;
+                            _brushRunTimes     = 0;
 
                             // Make sure we don't stack multiple timers.
                             if (_brushTimer != null)
@@ -3994,13 +5801,15 @@ namespace DNA.CastleMinerZ.UI
                             _brushTimer.Tick += WorldBrush_Tick;
                             _brushTimer.Start();
 
-                            _brushEnabled = true;
+                            _brushEnabled = true; BrushEnabled = true;
                             break;
                         }
 
                     case "off":
                         Console.WriteLine("Brush Deactivated!");
-                        _brushEnabled = false;
+                        _brushEnabled     = false; BrushEnabled = false;
+                        _brushRunTimes    = 0;
+                        ActiveBrushItemID = -1; // Clear the snapshot brush item.
 
                         if (_brushTimer != null)
                         {
@@ -4083,22 +5892,237 @@ namespace DNA.CastleMinerZ.UI
                                   $"Brush Height: {_brushHeight}\n" +
                                   $"Hollow Mode: {_brushHollow}\n" +
                                   $"Replace Mode: {_brushReplaceMode}\n" +
-                                  $"Rapid Mode: {_brushRapidMode}");
+                                  $"Rapid Mode: {_brushRapidMode}.");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         // Utility Commands.
 
+        #region /fill
+
+        [Command("//fill")]
+        [Command("/fill")]
+        private async Task ExecuteFill(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.WriteLine("ERROR: Command usage /fill [block(,array)] [radius] (depth) (direction)");
+                return;
+            }
+
+            try
+            {
+                string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
+                int radius = int.TryParse(args[1], out int r) ? Math.Abs(r) : 1;
+                int depth = args.Length > 2 && int.TryParse(args[2], out int d) ? Math.Max(1, Math.Abs(d)) : 1;
+
+                Direction fillDirection = GetFacingDirection(GetUsersLocation(), GetUsersCursorLocation());
+                if (args.Length > 3)
+                {
+                    if (!TryParseDirection(args[3], out fillDirection))
+                    {
+                        Console.WriteLine("ERROR: Invalid direction. Use posX, negX, posZ, negZ, Up, or Down.");
+                        return;
+                    }
+                }
+
+                if (!IsValidCursorLocation())
+                {
+                    Console.WriteLine("ERROR: Target an empty block first.");
+                    return;
+                }
+
+                Vector3 start = GetUsersLocation();
+                if (GetBlockFromLocation(start) != AirID)
+                {
+                    Console.WriteLine("ERROR: /fill must start from an empty block.");
+                    return;
+                }
+
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return;
+
+                HashSet<Vector3> region = await FillHole(start, radius, depth, fillDirection);
+
+                if (region.Count == 0)
+                {
+                    Console.WriteLine("No matching air blocks were found to fill.");
+                    return;
+                }
+
+                await SaveUndo(region);
+                ClearRedo();
+
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                foreach (Vector3 blockLocation in region)
+                {
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
+
+                    if (GetBlockFromLocation(blockLocation) != block)
+                    {
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
+                    }
+                }
+
+                await SaveUndo(redoBuilder);
+
+                Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
+        #region /fillr
+
+        [Command("//fillr")]
+        [Command("/fillr")]
+        private async Task ExecuteFillRecursive(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.WriteLine("ERROR: Command usage /fillr [block(,array)] [radius] (depth) (direction)");
+                return;
+            }
+
+            try
+            {
+                string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
+                int radius = int.TryParse(args[1], out int r) ? Math.Abs(r) : 1;
+                int depth = args.Length > 2 && int.TryParse(args[2], out int d) ? Math.Max(1, Math.Abs(d)) : int.MaxValue;
+
+                Direction fillDirection = GetFacingDirection(GetUsersLocation(), GetUsersCursorLocation());
+                if (args.Length > 3)
+                {
+                    if (!TryParseDirection(args[3], out fillDirection))
+                    {
+                        Console.WriteLine("ERROR: Invalid direction. Use posX, negX, posZ, negZ, Up, or Down.");
+                        return;
+                    }
+                }
+
+                if (!IsValidCursorLocation())
+                {
+                    Console.WriteLine("ERROR: Target an empty block first.");
+                    return;
+                }
+
+                Vector3 start = GetUsersLocation();
+                if (GetBlockFromLocation(start) != AirID)
+                {
+                    Console.WriteLine("ERROR: /fillr must start from an empty block.");
+                    return;
+                }
+
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0) return;
+
+                HashSet<Vector3> region = await FillHoleRecursive(start, radius, depth, fillDirection);
+
+                if (region.Count == 0)
+                {
+                    Console.WriteLine("No matching air blocks were found to fill.");
+                    return;
+                }
+
+                await SaveUndo(region);
+                ClearRedo();
+
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                foreach (Vector3 blockLocation in region)
+                {
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
+
+                    if (GetBlockFromLocation(blockLocation) != block)
+                    {
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
+                    }
+                }
+
+                await SaveUndo(redoBuilder);
+
+                Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
+        #region /drain
+
+        [Command("//drain")]
+        [Command("/drain")]
+        private async Task ExecuteDrain(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("ERROR: Command usage /drain [radius]");
+                return;
+            }
+
+            try
+            {
+                int radius = int.TryParse(args[0], out int r) ? Math.Abs(r) : 0;
+                Vector3 origin = GetUsersLocation();
+
+                HashSet<Vector3> region = await Drain(origin, radius);
+
+                if (region.Count == 0)
+                {
+                    Console.WriteLine("No nearby lava blocks were found to drain.");
+                    return;
+                }
+
+                await SaveUndo(region);
+                ClearRedo();
+
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+                foreach (Vector3 blockLocation in region)
+                {
+                    if (GetBlockFromLocation(blockLocation) != AirID)
+                    {
+                        AsyncBlockPlacer.Enqueue(blockLocation, AirID);
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, AirID));
+                    }
+                }
+
+                await SaveUndo(redoBuilder);
+
+                Console.WriteLine($"{redoBuilder.Count} lava blocks have been drained!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
         #region /removenear
 
+        [Command("//removenear")]
         [Command("/removenear")]
+        [Command("//nuke")]
         [Command("/nuke")]
-        private static void ExecuteRemoveNear(string[] args)
+        private async Task ExecuteRemoveNear(string[] args)
         {
             if (args.Length == 0)
             {
@@ -4121,16 +6145,17 @@ namespace DNA.CastleMinerZ.UI
                 int shortestDistance = (int)Math.Min(Math.Abs(basePosition.Y - WorldHeights.MaxY), Math.Abs(basePosition.Y - WorldHeights.MinY));
 
                 // Get the max height based on the input and the cap.
-                int searchHeight = (radii <= furthestDistance) ? radii : furthestDistance;
-        
+                // Make the max height use x2 so it removes radii below & above.
+                int searchHeight = (radii * 2 <= furthestDistance) ? radii * 2: furthestDistance;
+
                 // Get the center point.
                 Vector3 centerOffset = new Vector3(basePosition.X, basePosition.Y - (searchHeight / 2), basePosition.Z);
 
                 // MakeCylinder(Vector3 pos, double radiusX, double radiusZ, int height, bool hollow, int ignoreBlock = -1).
-                var region = MakeCylinder(centerOffset, radii, radii, searchHeight, false, AirID);
+                var region = await MakeCylinder(centerOffset, radii, radii, searchHeight, false, AirID);
 
                 // Save the existing region and clear the upcoming redo.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -4139,7 +6164,11 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance).
                     if (GetBlockFromLocation(blockLocation) != AirID)
                     {
-                        PlaceBlock(blockLocation, AirID);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, AirID);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, AirID));
@@ -4147,22 +6176,24 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /replacenear
 
+        [Command("//replacenear")]
         [Command("/replacenear")]
+        [Command("//renear")]
         [Command("/renear")]
-        private static void ExecuteReplaceNear(string[] args)
+        private async Task ExecuteReplaceNear(string[] args)
         {
             if (args.Length < 3)
             {
@@ -4191,22 +6222,23 @@ namespace DNA.CastleMinerZ.UI
                 // Get the shortest distance from the world boundaries.
                 int furthestDistance = (int)Math.Max(Math.Abs(basePosition.Y - WorldHeights.MaxY), Math.Abs(basePosition.Y - WorldHeights.MinY));
                 int shortestDistance = (int)Math.Min(Math.Abs(basePosition.Y - WorldHeights.MaxY), Math.Abs(basePosition.Y - WorldHeights.MinY));
-                
+
                 // Get the max height based on the input and the cap.
-                int searchHeight = (radii <= furthestDistance) ? radii : furthestDistance;
-        
+                // Make the max height use x2 so it removes radii below & above.
+                int searchHeight = (radii * 2 <= furthestDistance) ? radii * 2: furthestDistance;
+
                 // Get the center point.
                 Vector3 centerOffset = new Vector3(basePosition.X, basePosition.Y - (searchHeight / 2), basePosition.Z);
 
                 // MakeCylinder(Vector3 pos, double radiusX, double radiusZ, int height, bool hollow, int ignoreBlock = -1).
                 // Check if the from-block pattern contains air, and if so, have the region save it.
-                var region = (searchPattern == "all" || searchPatternNumbers.Contains(AirID)) ? MakeCylinder(centerOffset, radii, radii, searchHeight, false) : MakeCylinder(centerOffset, radii, radii, searchHeight, false, AirID);
+                var region = (searchPattern == "all" || searchPatternNumbers.Contains(AirID)) ? await MakeCylinder(centerOffset, radii, radii, searchHeight, false) : await MakeCylinder(centerOffset, radii, radii, searchHeight, false, AirID);
 
                 // Save the existing region and clear the upcoming redo.
                 if (searchPattern == "all")
-                    SaveUndo(region);
+                    await SaveUndo(region);
                 else
-                    SaveUndo(region, saveBlock: searchPatternNumbers);
+                    await SaveUndo(region, saveBlock: searchPatternNumbers);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -4225,7 +6257,12 @@ namespace DNA.CastleMinerZ.UI
                         // Place block if it doesn't already exist. (improves the performance).
                         if (GetBlockFromLocation(blockLocation) != replaceBlock)
                         {
-                            PlaceBlock(blockLocation, replaceBlock);
+                            // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                            if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                                !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)replaceBlock))
+                                TryDestroyCrateAt(blockLocation);
+
+                            AsyncBlockPlacer.Enqueue(blockLocation, replaceBlock);
 
                             // Add block to redo.
                             redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, replaceBlock));
@@ -4234,49 +6271,92 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
 
         #region /snow
 
+        [Command("//snow")]
         [Command("/snow")]
-        private static void ExecuteSnow(string[] args)
+        private async Task ExecuteSnow(string[] args)
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("ERROR: Command usage /snow [block(,array)] [radius] (pos1)");
+                Console.WriteLine("ERROR: Command usage /snow [block(,array)] [radius] (pos1|region (worldY)) (replaceSurface)");
                 return;
             }
 
             try
             {
                 string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
-                int radius = int.TryParse(args[1], out int r) ? r : 10;
-                bool pasteAtPoint1 = args.Any(a => a.Equals("pos1", StringComparison.OrdinalIgnoreCase));
 
-                // Define the base location.
-                Vector3 basePosition = GetUsersLocation();
-                if (pasteAtPoint1)
-                    basePosition = _pointToLocation1;
+                bool useRegion = args.Any(a => a.Equals("region", StringComparison.OrdinalIgnoreCase));
+                bool pasteAtPoint1 = !useRegion && args.Any(a => a.Equals("pos1", StringComparison.OrdinalIgnoreCase));
+
+                // Optional: When using region mode, start Y scanning from the world's max Y instead of the region's max Y.
+                bool useWorldY = args.Any(a =>
+                    a.Equals("worldy", StringComparison.OrdinalIgnoreCase) ||
+                    a.Equals("fullheight", StringComparison.OrdinalIgnoreCase) ||
+                    a.Equals("maxy", StringComparison.OrdinalIgnoreCase));
+
+                // Optional: "replace"/"surface" anywhere => place snow ON the first solid block (no +1).
+                bool replaceSurface = args.Any(a =>
+                    a.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                    a.Equals("replace", StringComparison.OrdinalIgnoreCase) ||
+                    a.Equals("surface", StringComparison.OrdinalIgnoreCase) ||
+                    a.Equals("replacesurface", StringComparison.OrdinalIgnoreCase));
+
+                // Radius meaning:
+                // - Normal mode: Circle radius around player (or pos1).
+                // - Region mode: Radius is ignored (selection bounds are used exactly).
+                if (!int.TryParse(args[1], out int radius))
+                    radius = 10;
+
+                if (radius < 0)
+                    radius = Math.Abs(radius);
 
                 // Compare the input string to the games Enums and convert to their numerical values excluding numerical inputs.
                 int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
                 if (blockPatternNumbers.Length == 0) return; // Make sure the input is within the min/max.
 
-                // MakeSnow(Vector3 center, int radius).
-                var region = MakeSnow(basePosition, radius);
+                HashSet<Vector3> region;
+
+                if (useRegion)
+                {
+                    // Make sure both points have been set.
+                    if (_pointToLocation1 == default || _pointToLocation2 == default)
+                    {
+                        Console.WriteLine("ERROR: You must set /pos1 and /pos2 first.");
+                        return;
+                    }
+
+                    Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
+
+                    // MakeSnow(Region region, bool replaceSurface, bool useWorldY).
+                    region = await MakeSnow(definedRegion, replaceSurface, useWorldY);
+                }
+                else
+                {
+                    // Define the base location.
+                    Vector3 basePosition = GetUsersLocation();
+                    if (pasteAtPoint1)
+                        basePosition = _pointToLocation1;
+
+                    // MakeSnow(Vector3 center, int radius, bool replaceSurface).
+                    region = await MakeSnow(basePosition, radius, replaceSurface);
+                }
 
                 // Save the existing region and clear the upcoming redo.
                 // Extract and save only the vector locations for the initial save.
-                SaveUndo(region);
+                await SaveUndo(region);
                 ClearRedo();
 
                 HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -4288,7 +6368,12 @@ namespace DNA.CastleMinerZ.UI
                     // Place block if it doesn't already exist. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != block)
                     {
-                        PlaceBlock(blockLocation, block);
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
 
                         // Add block to redo.
                         redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
@@ -4296,13 +6381,168 @@ namespace DNA.CastleMinerZ.UI
                 }
 
                 // Save the actions to undo stack.
-                SaveUndo(redoBuilder);
+                await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{region.Count} blocks have been replaced!");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"ERROR: {ex.Message}");
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
+        #region /randomplace
+
+        /// <summary>
+        /// /randomplace [block(,array)] [radius] (amount) (surface)
+        /// Places the given block pattern at random positions in a square region
+        /// centered on the player. If surface = true, blocks are spawned on the
+        /// terrain surface; otherwise they may appear at any Y within world bounds.
+        /// After each placement, the position is printed to the console and the
+        /// action is recorded to the undo/redo stacks.
+        /// </summary>
+        [Command("//randomplace")]
+        [Command("/randomplace")]
+        private async Task ExecuteRandomPlace(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.WriteLine("ERROR: Command usage /randomplace [block(,array)] [radius] (amount) (surface)");
+                return;
+            }
+
+            try
+            {
+                // Required args.
+                string blockPattern = !string.IsNullOrEmpty(args[0]) ? args[0] : "1";
+                int radius          = int.TryParse(args[1], out int r) ? Math.Max(1, r) : 5;
+
+                // Optional args.
+                int  amount = (args.Length > 2 && int.TryParse(args[2], out int a) && a > 0) ? a : 1;
+                bool surfaceOnly = true; // Default: true (surface mode).
+
+                if (args.Length > 3 && !string.IsNullOrWhiteSpace(args[3]))
+                {
+                    // Accept "false" or "nosurface" to turn it off.
+                    if (args[3].Equals("false", StringComparison.OrdinalIgnoreCase) ||
+                        args[3].Equals("nosurface", StringComparison.OrdinalIgnoreCase))
+                    {
+                        surfaceOnly = false;
+                    }
+                    // (Optionally accept "true"/"surface" explicitly, but they're redundant.)
+                }
+
+                // Resolve the pattern to block IDs once and reuse.
+                int[] blockPatternNumbers =
+                    GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+
+                if (blockPatternNumbers == null || blockPatternNumbers.Length == 0)
+                {
+                    Console.WriteLine($"ERROR: Invalid block pattern '{blockPattern}'.");
+                    return;
+                }
+
+                // Center the square on the player (swap to GetUsersCursorLocation() if you prefer cursor).
+                Vector3 center = GetUsersLocation();
+
+                // Build the random positions first so SaveUndo captures the old state.
+                HashSet<Vector3> region = new HashSet<Vector3>();
+
+                // Safety so we don't spin forever if the radius is too small / columns are invalid.
+                int attempts    = 0;
+                int maxAttempts = amount * 50; // Up to 50 attempts per desired placement.
+
+                while (region.Count < amount && attempts < maxAttempts)
+                {
+                    attempts++;
+
+                    int offsetX = GenerateRandomNumber(-radius, radius);
+                    int offsetZ = GenerateRandomNumber(-radius, radius);
+
+                    int worldX = (int)center.X + offsetX;
+                    int worldZ = (int)center.Z + offsetZ;
+
+                    int worldY;
+
+                    if (surfaceOnly)
+                    {
+                        // Find the first solid block from top to bottom at this (x, z),
+                        // then place the new block just above it.
+                        float baseHeight = WorldHeights.MinY;
+
+                        for (int y = WorldHeights.MaxY; y > (WorldHeights.MinY - 1); y--)
+                        {
+                            Vector3 probePos = new Vector3(worldX, y, worldZ);
+
+                            if (GetBlockFromLocation(probePos) != AirID)
+                            {
+                                baseHeight = y + 1f;
+                                break;
+                            }
+                        }
+
+                        if (baseHeight <= WorldHeights.MinY)
+                            continue; // No surface found in this column, pick another spot.
+
+                        worldY = (int)baseHeight;
+                    }
+                    else
+                    {
+                        // Pick any Y within the world range.
+                        worldY = GenerateRandomNumber(WorldHeights.MinY, WorldHeights.MaxY);
+                    }
+
+                    Vector3 placePos = new Vector3(worldX, worldY, worldZ);
+
+                    // Ensure Y is within world bounds (X/Z unconstrained, same as other commands).
+                    if (!IsWithinWorldBounds(placePos, additionalHeight: 1, additionalDepth: 0))
+                        continue;
+
+                    // Avoid duplicate positions.
+                    region.Add(placePos);
+                }
+
+                if (region.Count == 0)
+                {
+                    Console.WriteLine("ERROR: No valid locations found for /randomplace in the given radius.");
+                    return;
+                }
+
+                // Capture old blocks for undo.
+                await SaveUndo(region);
+                ClearRedo();
+
+                // Apply the new blocks and record redo data.
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+
+                foreach (Vector3 blockLocation in region)
+                {
+                    // Get random block from input.
+                    int block = GetRandomBlockFromPattern(blockPatternNumbers);
+
+                    // Place block if it doesn't already exist. (improves the performance)
+                    if (GetBlockFromLocation(blockLocation) != block)
+                    {
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                            TryDestroyCrateAt(blockLocation);
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
+
+                        Console.WriteLine($"RandomPlace: Placed block '{block}' at ({blockLocation.X}, {blockLocation.Y}, {blockLocation.Z}).");
+                    }
+                }
+
+                await SaveUndo(redoBuilder);
+
+                Console.WriteLine($"RandomPlace: Placed {redoBuilder.Count} block(s) within radius {radius} (surfaceOnly={surfaceOnly}).");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
             }
         }
         #endregion
@@ -4319,9 +6559,25 @@ namespace DNA.CastleMinerZ.UI
             if (!IsNetworkSessionActive() || !_wandEnabled)
             {
                 ((Timer)sender).Stop();
-                _wandEnabled = false;
+                _wandEnabled = false; WandEnabled = false;
                 return;
             }
+
+            // If the game does not have focus, do nothing.
+            if (!IsGameWindowActive())
+                return;
+
+            // If the in-game menu is open, do nothing.
+            if (IsInGameMenuOpen())
+                return;
+
+            // If the crafting menu is open, do nothing.
+            if (IsCraftingMenuOpen())
+                return;
+
+            // If the chat console is open, do nothing.
+            if (IsChatOpen())
+                return;
 
             MouseState mouseState = Mouse.GetState();
             bool leftClick = mouseState.LeftButton == ButtonState.Pressed;
@@ -4358,9 +6614,25 @@ namespace DNA.CastleMinerZ.UI
             if (!IsNetworkSessionActive() || !_toolEnabled)
             {
                 ((Timer)sender).Stop();
-                _toolEnabled = false;
+                _toolEnabled = false; ToolEnabled = false;
                 return;
             }
+
+            // If the game does not have focus, do nothing.
+            if (!IsGameWindowActive())
+                return;
+
+            // If the in-game menu is open, do nothing.
+            if (IsInGameMenuOpen())
+                return;
+
+            // If the crafting menu is open, do nothing.
+            if (IsCraftingMenuOpen())
+                return;
+
+            // If the chat console is open, do nothing.
+            if (IsChatOpen())
+                return;
 
             MouseState mouseState = Mouse.GetState();
             bool leftClick = mouseState.LeftButton == ButtonState.Pressed;
@@ -4443,18 +6715,109 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
+        #region World NavWand
+
+        private Timer _navWandTimer;
+        private bool  _navWandBusy;
+        private int   _navWandRunTimes;
+
+        /// <summary>
+        /// Starts the always-on nav-wand timer.
+        /// Summary: While holding <see cref="NavWandItemID"/> (default: Compass), left click = /jumpto and right click = /thru.
+        /// </summary>
+        private void StartNavWandTimer()
+        {
+            // Already running.
+            if (_navWandTimer != null)
+                return;
+
+            _navWandTimer = new Timer() { Interval = 16 };
+            _navWandTimer.Tick += WorldNavWand_Tick;
+            _navWandTimer.Start();
+        }
+
+        /// <summary>
+        /// Handles nav-wand input.
+        /// Summary: Provides quick navigation actions without typing commands.
+        /// </summary>
+        private async void WorldNavWand_Tick(object sender, EventArgs e)
+        {
+            // If we're not in a session, do nothing (timer stays alive across world changes).
+            if (!IsNetworkSessionActive())
+                return;
+
+            // If the game does not have focus, do nothing.
+            if (!IsGameWindowActive())
+                return;
+
+            // If the in-game menu is open, do nothing.
+            if (IsInGameMenuOpen())
+                return;
+
+            // If the crafting menu is open, do nothing.
+            if (IsCraftingMenuOpen())
+                return;
+
+            // If the chat console is open, do nothing.
+            if (IsChatOpen())
+                return;
+
+            MouseState mouseState = Mouse.GetState();
+            bool leftClick = mouseState.LeftButton == ButtonState.Pressed;
+            bool rightClick = mouseState.RightButton == ButtonState.Pressed;
+
+            // Always re-arm once the user releases input (even if we're busy).
+            if (!leftClick && !rightClick)
+                _navWandRunTimes = 0;
+
+            // If an action is running, don't start another one.
+            if (_navWandBusy)
+                return;
+
+            // Disabled via config?
+            if (NavWandItemID < 0)
+                return;
+
+            int held = GetUsersHeldItem();
+            if (held < 0 || held != NavWandItemID)
+                return;
+
+            // Left click -> /jumpto.
+            if (leftClick && _navWandRunTimes == 0)
+            {
+                _navWandBusy = true;
+                _navWandRunTimes++;
+
+                try { ExecuteJumpTo(); }
+                finally { _navWandBusy = false; }
+                return;
+            }
+
+            // Right click -> /thru.
+            if (rightClick && _navWandRunTimes == 0)
+            {
+                _navWandBusy = true;
+                _navWandRunTimes++;
+
+                try { await ExecuteThru(); }
+                finally { _navWandBusy = false; }
+                return;
+            }
+        }
+        #endregion
+
         #region World Brush
 
         private Timer _brushTimer;        // The single timer that drives WorldBrush_Tick.
         private int _brushRunTimes;       // Set default values.
         private string _brushBlockPattern = "1";
-        private string _brushShape        = "sphere"; 
+        private string _brushShape        = "sphere";
         private int _brushSize            = 4;
         private int _brushHeight          = 8;
         private bool _brushHollow         = false;
         private bool _brushReplaceMode    = false;
         private bool _brushRapidMode      = false;
-        private void WorldBrush_Tick(object sender, EventArgs e)
+        private async void WorldBrush_Tick(object sender, EventArgs e)
         {
             if (!IsNetworkSessionActive() || !_brushEnabled)
             {
@@ -4468,10 +6831,26 @@ namespace DNA.CastleMinerZ.UI
                         _brushTimer = null;
                 }
 
-                _brushEnabled = false;
+                _brushEnabled  = false; BrushEnabled = false;
                 _brushRunTimes = 0;
                 return;
             }
+
+            // If the game does not have focus, do nothing.
+            if (!IsGameWindowActive())
+                return;
+
+            // If the in-game menu is open, do nothing.
+            if (IsInGameMenuOpen())
+                return;
+
+            // If the crafting menu is open, do nothing.
+            if (IsCraftingMenuOpen())
+                return;
+
+            // If the chat console is open, do nothing.
+            if (IsChatOpen())
+                return;
 
             MouseState mouseState = Mouse.GetState();
             bool leftClick = mouseState.LeftButton == ButtonState.Pressed;
@@ -4507,47 +6886,47 @@ namespace DNA.CastleMinerZ.UI
                         {
                             // Check if the from-block pattern contains air, and if so, have the region save it.
                             case "floor":
-                                tempRegion = (_brushReplaceMode) ? MakeFloor(cursorLocation, _brushSize, _brushHollow, ignoreBlock: AirID) : MakeFloor(cursorLocation, _brushSize, _brushHollow);
+                                tempRegion = (_brushReplaceMode) ? await MakeFloor(cursorLocation, _brushSize, _brushHollow, ignoreBlock: AirID) : await MakeFloor(cursorLocation, _brushSize, _brushHollow);
                                 break;
 
                             case "cube":
-                                tempRegion = (_brushReplaceMode) ? MakeCube(buildLocation, _brushSize, _brushHollow, ignoreBlock: AirID) : MakeCube(buildLocation, _brushSize, _brushHollow);
+                                tempRegion = (_brushReplaceMode) ? await MakeCube(buildLocation, _brushSize, _brushHollow, ignoreBlock: AirID) : await MakeCube(buildLocation, _brushSize, _brushHollow);
                                 break;
 
                             case "prism":
-                                tempRegion = (_brushReplaceMode) ? MakeTriangularPrism(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow, ignoreBlock: AirID) : MakeTriangularPrism(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow);
+                                tempRegion = (_brushReplaceMode) ? await MakeTriangularPrism(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow, ignoreBlock: AirID) : await MakeTriangularPrism(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow);
                                 break;
 
                             case "sphere":
-                                tempRegion = (_brushReplaceMode) ? MakeSphere(buildLocation, _brushSize, _brushSize, _brushSize, _brushHollow, ignoreBlock: AirID) : MakeSphere(buildLocation, _brushSize, _brushSize, _brushSize, _brushHollow);
+                                tempRegion = (_brushReplaceMode) ? await MakeSphere(buildLocation, _brushSize, _brushSize, _brushSize, _brushHollow, ignoreBlock: AirID) : await MakeSphere(buildLocation, _brushSize, _brushSize, _brushSize, _brushHollow);
                                 break;
 
                             case "ring":
-                                tempRegion = (_brushReplaceMode) ? MakeRing(cursorLocation, _brushSize, _brushHollow, ignoreBlock: AirID) : MakeRing(cursorLocation, _brushSize, _brushHollow);
+                                tempRegion = (_brushReplaceMode) ? await MakeRing(cursorLocation, _brushSize, _brushHollow, ignoreBlock: AirID) : await MakeRing(cursorLocation, _brushSize, _brushHollow);
                                 break;
 
                             case "pyramid":
-                                tempRegion = (_brushReplaceMode) ? MakePyramid(buildLocation, _brushSize, _brushHollow, ignoreBlock: AirID) : MakePyramid(buildLocation, _brushSize, _brushHollow);
+                                tempRegion = (_brushReplaceMode) ? await MakePyramid(buildLocation, _brushSize, _brushHollow, ignoreBlock: AirID) : await MakePyramid(buildLocation, _brushSize, _brushHollow);
                                 break;
 
                             case "cone":
-                                tempRegion = (_brushReplaceMode) ? MakeCone(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow, 1, ignoreBlock: AirID) : MakeCone(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow, 1);
+                                tempRegion = (_brushReplaceMode) ? await MakeCone(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow, 1, ignoreBlock: AirID) : await MakeCone(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow, 1);
                                 break;
 
                             case "cylinder":
-                                tempRegion = (_brushReplaceMode) ? MakeCylinder(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow, ignoreBlock: AirID) : MakeCylinder(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow);
+                                tempRegion = (_brushReplaceMode) ? await MakeCylinder(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow, ignoreBlock: AirID) : await MakeCylinder(buildLocation, _brushSize, _brushSize, _brushHeight, _brushHollow);
                                 break;
 
                             case "diamond":
-                                tempRegion = (_brushReplaceMode) ? MakeDiamond(buildLocation, _brushSize, _brushHollow, false, ignoreBlock: AirID) : MakeDiamond(buildLocation, _brushSize, _brushHollow, false);
+                                tempRegion = (_brushReplaceMode) ? await MakeDiamond(buildLocation, _brushSize, _brushHollow, false, ignoreBlock: AirID) : await MakeDiamond(buildLocation, _brushSize, _brushHollow, false);
                                 break;
 
                             case "snow":
-                                tempRegion = MakeSnow(cursorLocation, _brushSize, _brushReplaceMode);
+                                tempRegion = await MakeSnow(cursorLocation, _brushSize, _brushReplaceMode);
                                 break;
 
                             case "floodfill":
-                                tempRegion = FloodFill(cursorLocation, _brushSize);
+                                tempRegion = await FloodFill(cursorLocation, _brushSize);
                                 break;
 
                             case "tree":
@@ -4558,11 +6937,11 @@ namespace DNA.CastleMinerZ.UI
                                 if (copiedRegion.Count() == 0)
                                     Console.WriteLine("BRUSH: No schem data found. You need to first copy a region or import file.");
                                 else
-                                    region = PasteRegion(buildLocation);
+                                    region = await PasteRegion(buildLocation);
                                 break;
 
                             default:
-                                tempRegion = (_brushReplaceMode) ? MakeSphere(buildLocation, _brushSize, _brushSize, _brushSize, _brushHollow, ignoreBlock: AirID) : MakeSphere(buildLocation, _brushSize, _brushSize, _brushSize, _brushHollow);
+                                tempRegion = (_brushReplaceMode) ? await MakeSphere(buildLocation, _brushSize, _brushSize, _brushSize, _brushHollow, ignoreBlock: AirID) : await MakeSphere(buildLocation, _brushSize, _brushSize, _brushSize, _brushHollow);
                                 break;
                         }
                     }
@@ -4579,9 +6958,9 @@ namespace DNA.CastleMinerZ.UI
                     // Save the existing region and clear the upcoming redo.
                     // If replacemode is enabled, do not save the entire region, only the effected blocks.
                     if (_brushReplaceMode)
-                        SaveUndo(ExtractVector3HashSet(region), saveBlock: new int[] { cursorBlock });
+                        await SaveUndo(ExtractVector3HashSet(region), saveBlock: new int[] { cursorBlock });
                     else
-                        SaveUndo(ExtractVector3HashSet(region));
+                        await SaveUndo(ExtractVector3HashSet(region));
                     ClearRedo();
 
                     HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
@@ -4598,7 +6977,12 @@ namespace DNA.CastleMinerZ.UI
                             // Place block if it doesn't already exist. (improves the performance)
                             if (GetBlockFromLocation(blockLocation) != blockToUse)
                             {
-                                PlaceBlock(blockLocation, blockToUse);
+                                // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                                if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                                    !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                                    TryDestroyCrateAt(blockLocation);
+
+                                AsyncBlockPlacer.Enqueue(blockLocation, blockToUse);
 
                                 // Add block to redo.
                                 redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, blockToUse));
@@ -4607,7 +6991,7 @@ namespace DNA.CastleMinerZ.UI
                     }
 
                     // Save the actions to undo stack.
-                    SaveUndo(redoBuilder);
+                    await SaveUndo(redoBuilder);
                 }
                 else if (!leftClick)
                 {
@@ -4632,7 +7016,4 @@ namespace DNA.CastleMinerZ.UI
         /// END OF REMOVAL.
         /// </summary>
     }
-
 }
-
-

@@ -52,6 +52,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AsyncBlockPlacer.cs" />
+    <Compile Include="AsyncFrameYield.cs" />
     <Compile Include="WE_Example.cs">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Compile>
