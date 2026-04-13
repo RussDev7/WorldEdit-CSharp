@@ -203,7 +203,9 @@ namespace WorldEdit
             public static bool IsCraftingMenuOpen() => DNA.CastleMinerZ.CastleMinerZGame.Instance?.GameScreen?._uiGroup?.CurrentScreen is DNA.CastleMinerZ.UI.CraftingScreen;
 
             // Implement a feature to check if the chat console is open.
+            #pragma warning disable CS0436 // Suppress type conflicts with imported type warning.
             public static bool IsChatOpen() => DNA.CastleMinerZ.CastleMinerZGame.Instance?.GameScreen?._uiGroup?.CurrentScreen is DNA.CastleMinerZ.UI.PlainChatInputScreen; // .IsChatting can throw.
+            #pragma warning restore CS0436
 
             // Implement a feature to gather the games cursor location. This is the in reach block location the user can interact with.
             public static Vector3 GetUsersCursorLocation() => DNA.CastleMinerZ.UI.InGameHUD.Instance?.ConstructionProbe._worldIndex ?? DNA.IntVector3.Zero;
