@@ -6733,7 +6733,7 @@ namespace DNA.CastleMinerZ.UI
         /// Starts the always-on nav-wand timer.
         /// Summary: While holding <see cref="NavWandItemID"/> (default: Compass), left click = /jumpto and right click = /thru.
         /// </summary>
-        public void StartNavWandTimer()
+        private void StartNavWandTimer()
         {
             // Already running.
             if (_navWandTimer != null)
