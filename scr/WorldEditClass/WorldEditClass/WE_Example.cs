@@ -693,7 +693,7 @@ namespace DNA.CastleMinerZ.UI
 
         #region /redo
 
-        [Command("/redo")]
+        [Command("//redo")]
         [Command("/redo")]
         private async Task ExecuteRedo(string[] args)
         {
@@ -2247,7 +2247,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/rep")]
         [Command("//re")]
         [Command("/re")]
-        private async static void ExecuteReplace(string[] args)
+        private static async Task ExecuteReplace(string[] args)
         {
             if (args.Length < 2)
             {
@@ -2327,7 +2327,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/allexcept")]
         [Command("//allex")]
         [Command("/allex")]
-        private async static void ExecuteAllExcept(string[] args)
+        private static async Task ExecuteAllExcept(string[] args)
         {
             if (args.Length == 0)
             {
@@ -3955,7 +3955,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//break")]
         [Command("/break")]
-        private async static void ExecuteBreak(string[] args)
+        private static async Task ExecuteBreak(string[] args)
         {
             try
             {
@@ -4877,7 +4877,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//cut")]
         [Command("/cut")]
-        private async static void ExecuteCut()
+        private async Task ExecuteCut()
         {
             try
             {
@@ -4897,10 +4897,18 @@ namespace DNA.CastleMinerZ.UI
                     return;
                 }
 
-                // Save copy data.
+                // Save copy data first.
                 await CopyRegion(definedRegion);
 
+                // Build a list of all non-air blocks in the region.
+                var regionBlocks = await FillRegion(definedRegion, false, AirID);
+
+                // Save the BEFORE snapshot for undo.
+                await SaveUndo(regionBlocks);
+                ClearRedo();
+
                 // Remove crate entries from the world + notify clients.
+                // Do this AFTER SaveUndo so crate contents can be restored on undo.
                 int minX = (int)Math.Min(definedRegion.Position1.X, definedRegion.Position2.X);
                 int minY = (int)Math.Min(definedRegion.Position1.Y, definedRegion.Position2.Y);
                 int minZ = (int)Math.Min(definedRegion.Position1.Z, definedRegion.Position2.Z);
@@ -4909,20 +4917,22 @@ namespace DNA.CastleMinerZ.UI
                 int maxZ = (int)Math.Max(definedRegion.Position1.Z, definedRegion.Position2.Z);
                 DestroyCratesInBounds(minX, minY, minZ, maxX, maxY, maxZ);
 
-                // FillRegion(Region region, bool hollow, int ignoreBlock = -1).
-                var region = await FillRegion(definedRegion, false, AirID);
+                // Delete the contents of this region and build the AFTER snapshot.
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
 
-                // Delete the contents of this region.
-                foreach (Vector3 blockLocation in region)
+                foreach (Vector3 blockLocation in regionBlocks)
                 {
-                    // Remove blocks that are not already air. (improves the performance)
                     if (GetBlockFromLocation(blockLocation) != AirID)
                     {
                         AsyncBlockPlacer.Enqueue(blockLocation, AirID);
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, AirID));
                     }
                 }
 
-                Console.WriteLine($"Region was cut and copied to your clipboard.");
+                // Save the AFTER snapshot so redo can re-apply the cut.
+                await SaveUndo(redoBuilder);
+
+                Console.WriteLine("Region was cut and copied to your clipboard.");
             }
             catch (Exception ex)
             {
