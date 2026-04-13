@@ -4934,7 +4934,7 @@ namespace DNA.CastleMinerZ.UI
                 // Save the AFTER snapshot so redo can re-apply the cut.
                 await SaveUndo(redoBuilder);
 
-                Console.WriteLine("Region was cut and copied to your clipboard.");
+                Console.WriteLine("Region was cut.");
             }
             catch (Exception ex)
             {
