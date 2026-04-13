@@ -30,38 +30,37 @@ using System;
 
 using static WorldEdit.WorldEditCore.EnumMapper;
 using static WorldEdit.WorldEditCore.WorldUtils;
+using static WorldEdit.WorldEditRuntime;
 using static WorldEdit.WorldEditCore;
 
 using ButtonState = Microsoft.Xna.Framework.Input.ButtonState; // XNA (CMZ) Type Aliases.
 using MouseState  = Microsoft.Xna.Framework.Input.MouseState;  //
 using Mouse       = Microsoft.Xna.Framework.Input.Mouse;       //
-using Vector3     = Microsoft.Xna.Framework.Vector3;           //      
+using Vector3     = Microsoft.Xna.Framework.Vector3;           //
 
-namespace DNA.CastleMinerZ.UI
+namespace WorldEdit
 {
-    public partial class PlainChatInputScreen : UIControlScreen
+    public static class WorldEditRuntime
     {
         #region Wand State
 
         // Instance flags (drive behavior).
-        private bool _wandEnabled;
-        private bool _toolEnabled;
-        private bool _navWandEnabled;
-        private bool _brushEnabled;
+        private static bool          _wandEnabled;
+        private static bool          _toolEnabled;
+        private static bool          _brushEnabled;
 
         // Static snapshot.
         internal static volatile bool WandEnabled;
         internal static volatile bool ToolEnabled;
-        internal static volatile bool NavWandEnabled;
         internal static volatile bool BrushEnabled;
         internal static volatile int  ActiveWandItemID;
         internal static volatile int  ActiveToolItemID;
         internal static volatile int  ActiveNavWandItemID = NavWandItemID;
         internal static volatile int  ActiveBrushItemID;
 
-        private string _toolCommand = "";         // Active tool sub-command (set by /tool); empty = none selected.
-        private int    _toolItem    = WandItemID; // Item ID required to activate the tool; defaults to WandItem as a safe placeholder.
-        private int    _brushItem   = WandItemID; // Item ID required to activate the brush; defaults to WandItem as a safe placeholder.
+        private static string _toolCommand = "";         // Active tool sub-command (set by /tool); empty = none selected.
+        private static int    _toolItem    = WandItemID; // Item ID required to activate the tool; defaults to WandItem as a safe placeholder.
+        private static int    _brushItem   = WandItemID; // Item ID required to activate the brush; defaults to WandItem as a safe placeholder.
 
         /// <summary>
         /// Returns true if any wand mode is currently enabled.
@@ -81,33 +80,9 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
-        #region Text Edit Control
-
-        #pragma warning disable IDE1006 // Suppress naming styles warning.
-        private void _textEditControl_EnterPressed(object sender, EventArgs e)
-        #pragma warning restore IDE1006
-        {
-            string inputText = _textEditControl.Text.Trim();
-            if (string.IsNullOrWhiteSpace(inputText)) return;
-
-            if (inputText.StartsWith("/"))
-            {
-                HandleChatCommand(inputText);
-            }
-            else
-            {
-                // Not a command, do normal chat functions.
-                DNA.CastleMinerZ.Net.BroadcastTextMessage.Send(_game.MyNetworkGamer, $"{_game.MyNetworkGamer.Gamertag}: {inputText}");
-            }
-
-            _textEditControl.Text = ""; // Clear input to prevent repeated execution.
-            base.PopMe();
-        }
-        #endregion
-
         #region Chat Command Handler
 
-        private Dictionary<string, Action<string[]>> commandMap;
+        private static Dictionary<string, Action<string[]>> commandMap;
         [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
         public class CommandAttribute : Attribute
         {
@@ -119,7 +94,7 @@ namespace DNA.CastleMinerZ.UI
             }
         }
 
-        private void HandleChatCommand(string command)
+        public static void HandleChatCommand(string command)
         {
             InitializeCommands(); // Lazy initialization
 
@@ -139,14 +114,14 @@ namespace DNA.CastleMinerZ.UI
             }
         }
 
-        private void InitializeCommands()
+        private static void InitializeCommands()
         {
             if (commandMap != null)
                 return;
 
             commandMap = new Dictionary<string, Action<string[]>>(StringComparer.OrdinalIgnoreCase);
 
-            var methods = GetType().GetMethods(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
+            var methods = typeof(WorldEditRuntime).GetMethods(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Instance);
             foreach (var method in methods)
             {
                 if (method.GetCustomAttributes(typeof(CommandAttribute), false) is CommandAttribute[] attributes)
@@ -160,7 +135,7 @@ namespace DNA.CastleMinerZ.UI
                         }
 
                         // Handle static vs instance
-                        object target = method.IsStatic ? null : this;
+                        object target = null; // method.IsStatic ? null : this;
 
                         // Handle parameterless methods
                         if (method.GetParameters().Length == 0)
@@ -309,7 +284,7 @@ namespace DNA.CastleMinerZ.UI
         #region /cc
 
         [Command("/cc")]
-        private void ExecuteCC()
+        private static void ExecuteCC()
         {
             try
             {
@@ -327,7 +302,7 @@ namespace DNA.CastleMinerZ.UI
         #region /brightness
 
         [Command("/brightness")]
-        private void ExecuteBrightness(string[] args)
+        private static void ExecuteBrightness(string[] args)
         {
             if (args.Length == 0)
             {
@@ -367,7 +342,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("/teleport")]
         [Command("/tp")]
-        private void ExecuteTeleport(string[] args)
+        private static void ExecuteTeleport(string[] args)
         {
             if (args.Length < 1)
             {
@@ -450,7 +425,7 @@ namespace DNA.CastleMinerZ.UI
         #region /time
 
         [Command("/time")]
-        private void ExecuteTime(string[] args)
+        private static void ExecuteTime(string[] args)
         {
             if (args.Length == 0)
             {
@@ -488,8 +463,9 @@ namespace DNA.CastleMinerZ.UI
             try
             {
                 // Toggle the _hideUI and avatar visibility bools.
-                DNA.CastleMinerZ.UI.InGameHUD._hideUI = !DNA.CastleMinerZ.UI.InGameHUD._hideUI;
-                DNA.CastleMinerZ.CastleMinerZGame.Instance.LocalPlayer.Avatar.Visible = !CastleMinerZGame.Instance.LocalPlayer.Avatar.Visible;
+                // If you implemented this tweak, uncomment this line.
+                // DNA.CastleMinerZ.UI.InGameHUD._hideUI = !DNA.CastleMinerZ.UI.InGameHUD._hideUI;
+                DNA.CastleMinerZ.CastleMinerZGame.Instance.LocalPlayer.Avatar.Visible = !DNA.CastleMinerZ.CastleMinerZGame.Instance.LocalPlayer.Avatar.Visible;
             }
             catch (Exception ex)
             {
@@ -501,7 +477,7 @@ namespace DNA.CastleMinerZ.UI
         #region /seed
 
         [Command("/seed")]
-        private void ExecuteSeed()
+        private static void ExecuteSeed()
         {
             try
             {
@@ -530,7 +506,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//cui")]
         [Command("/cui")]
-        private void ExecuteCUI(string[] args)
+        private static void ExecuteCUI(string[] args)
         {
             /*
             if (args.Length == 0)
@@ -542,17 +518,18 @@ namespace DNA.CastleMinerZ.UI
 
             try
             {
-                switch (ResolveToggle(args, _enableCLU))
+                bool? enable = ResolveToggle(args, _wandEnabled);
+                switch (enable)
                 {
                     case true:
-                        // if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
+                        // if (args.Length != 1) { SendFeedback("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
 
                         _enableCLU = true;
                         Console.WriteLine("Selections are now shown.");
                         break;
 
                     case false:
-                        // if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
+                        // if (args.Length != 1) { SendFeedback("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
 
                         _enableCLU = false;
                         Console.WriteLine("Selections are now hidden.");
@@ -575,7 +552,7 @@ namespace DNA.CastleMinerZ.UI
         /*
         [Command("//help")]
         [Command("/help")]
-        private void ExecuteHelp(string[] args)
+        private static void ExecuteHelp(string[] args)
         {
             int maxLinesPerPage = GetHelpPageSize();
             int totalPages = (int)Math.Ceiling((double)commands.Length / maxLinesPerPage);
@@ -637,7 +614,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//undo")]
         [Command("/undo")]
-        private async Task ExecuteUndo(string[] args)
+        private static async Task ExecuteUndo(string[] args)
         {
             try
             {
@@ -697,7 +674,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//redo")]
         [Command("/redo")]
-        private async Task ExecuteRedo(string[] args)
+        private static async Task ExecuteRedo(string[] args)
         {
             try
             {
@@ -759,7 +736,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/clearhistory")]
         [Command("//clearh")]
         [Command("/clearh")]
-        private void ExecuteClearHistory()
+        private static void ExecuteClearHistory()
         {
             try
             {
@@ -783,7 +760,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/undorecord")]
         [Command("//undorec")]
         [Command("/undorec")]
-        private void ExecuteUndoRecord(string[] args)
+        private static void ExecuteUndoRecord(string[] args)
         {
             // Summary:
             // - /undorecord               -> Toggle on/off
@@ -834,7 +811,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/unstuck")]
         [Command("//!")]
         [Command("/!")]
-        private async Task ExecuteUnstuck()
+        private static async Task ExecuteUnstuck()
         {
             try
             {
@@ -892,7 +869,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/ascend")]
         [Command("//asc")]
         [Command("/asc")]
-        private async Task ExecuteAscend(string[] args)
+        private static async Task ExecuteAscend(string[] args)
         {
             try
             {
@@ -944,7 +921,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/descend")]
         [Command("//desc")]
         [Command("/desc")]
-        private async Task ExecuteDescend(string[] args)
+        private static async Task ExecuteDescend(string[] args)
         {
             try
             {
@@ -994,7 +971,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//ceil")]
         [Command("/ceil")]
-        private async Task ExecuteCeil()
+        private static async Task ExecuteCeil()
         {
             try
             {
@@ -1024,7 +1001,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//thru")]
         [Command("/thru")]
-        private async Task ExecuteThru()
+        private static async Task ExecuteThru()
         {
             try
             {
@@ -1118,7 +1095,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/jumpto")]
         [Command("//j")]
         [Command("/j")]
-        private void ExecuteJumpTo()
+        private static void ExecuteJumpTo()
         {
             try
             {
@@ -1276,7 +1253,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//pos")]
         [Command("/pos")]
-        private void ExecutePos(string[] args)
+        private static void ExecutePos(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1292,19 +1269,19 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//pos1")]
         [Command("/pos1")]
-        private void ExecutePos1()
+        private static void ExecutePos1()
         {
             ExecutePosCore(1);
         }
 
         [Command("//pos2")]
         [Command("/pos2")]
-        private void ExecutePos2()
+        private static void ExecutePos2()
         {
             ExecutePosCore(2);
         }
 
-        private void ExecutePosCore(int point)
+        private static void ExecutePosCore(int point)
         {
             try
             {
@@ -1332,7 +1309,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//hpos")]
         [Command("/hpos")]
-        private void ExecuteHpos(string[] args)
+        private static void ExecuteHpos(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1367,7 +1344,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//chunk")]
         [Command("/chunk")]
-        private void ExecuteChunk(string[] args)
+        private static void ExecuteChunk(string[] args)
         {
             // Decide which point to center on.
             Vector3 chunkLoc = Vector3.Zero;
@@ -1481,7 +1458,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//wand")]
         [Command("/wand")]
-        private void ExecuteWand(string[] args) // Don't give 'static' for wand command.
+        private static void ExecuteWand(string[] args) // Don't give 'static' for wand command.
         {
             /*
             if (args.Length == 0)
@@ -1493,7 +1470,8 @@ namespace DNA.CastleMinerZ.UI
 
             try
             {
-                switch (ResolveToggle(args, _wandEnabled))
+                bool? enable = ResolveToggle(args, _wandEnabled);
+                switch (enable)
                 {
                     case true:
                         // if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /wand [on/off]"); return; }
@@ -1541,7 +1519,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//contract")]
         [Command("/contract")]
-        private void ExecuteContract(string[] args)
+        private static void ExecuteContract(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1626,7 +1604,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//shift")]
         [Command("/shift")]
-        private void ExecuteShift(string[] args)
+        private static void ExecuteShift(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1728,7 +1706,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//trim")]
         [Command("/trim")]
-        private void ExecuteTrim(string[] args)
+        private static void ExecuteTrim(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1780,7 +1758,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//size")]
         [Command("/size")]
-        private void ExecuteSize(string[] args)
+        private static void ExecuteSize(string[] args)
         {
             bool fromClipboard = args.Length >= 1 && args[0].Equals("clipboard", StringComparison.OrdinalIgnoreCase);
 
@@ -1836,7 +1814,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//count")]
         [Command("/count")]
-        private async Task ExecuteCount(string[] args)
+        private static async Task ExecuteCount(string[] args)
         {
             if (args.Length == 0)
             {
@@ -1892,7 +1870,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//distr")]
         [Command("/distr")]
-        private void ExecuteDistr(string[] args)
+        private static void ExecuteDistr(string[] args)
         {
             bool fromClipboard = false;
             int  page          = 1;
@@ -2007,7 +1985,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//expand")]
         [Command("/expand")]
-        private void ExecuteExpand(string[] args)
+        private static void ExecuteExpand(string[] args)
         {
             if (args.Length == 0)
             {
@@ -2181,7 +2159,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//line")]
         [Command("/line")]
-        private async Task ExecuteLine(string[] args)
+        private static async Task ExecuteLine(string[] args)
         {
             if (args.Length == 0)
             {
@@ -2407,7 +2385,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//overlay")]
         [Command("/overlay")]
-        private async Task ExecuteOverlay(string[] args)
+        private static async Task ExecuteOverlay(string[] args)
         {
             if (args.Length == 0)
             {
@@ -2473,7 +2451,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/naturalize")]
         [Command("//natur")]
         [Command("/natur")]
-        private async Task ExecuteNaturalize()
+        private static async Task ExecuteNaturalize()
         {
             try
             {
@@ -2531,7 +2509,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//walls")]
         [Command("/walls")]
-        private async Task ExecuteWalls(string[] args)
+        private static async Task ExecuteWalls(string[] args)
         {
             if (args.Length == 0)
             {
@@ -2594,7 +2572,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//smooth")]
         [Command("/smooth")]
-        private async Task ExecuteSmooth(string[] args)
+        private static async Task ExecuteSmooth(string[] args)
         {
             try
             {
@@ -2649,7 +2627,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//move")]
         [Command("/move")]
-        private async Task ExecuteMove(string[] args)
+        private static async Task ExecuteMove(string[] args)
         {
             if (args.Length == 0)
             {
@@ -2754,7 +2732,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//stack")]
         [Command("/stack")]
-        private async Task ExecuteStack(string[] args)
+        private static async Task ExecuteStack(string[] args)
         {
             try
             {
@@ -2874,7 +2852,7 @@ namespace DNA.CastleMinerZ.UI
         /// </summary>
         [Command("//regen")]
         [Command("/regen")]
-        private async Task ExecuteRegen(string[] args)
+        private static async Task ExecuteRegen(string[] args)
         {
             // Capture originals so we can sanity-check / re-stabilize state.
             var terrain = DNA.CastleMinerZ.Terrain.BlockTerrain.Instance;
@@ -3194,7 +3172,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/stretch")]
         [Command("//str")]
         [Command("/str")]
-        private async Task ExecuteStretch(string[] args)
+        private static async Task ExecuteStretch(string[] args)
         {
             try
             {
@@ -3302,7 +3280,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//spell")]
         [Command("/spell")]
-        private async Task ExecuteSpell(string[] args)
+        private static async Task ExecuteSpell(string[] args)
         {
             if (args.Length < 2)
             {
@@ -3531,7 +3509,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//hollow")]
         [Command("/hollow")]
-        private async Task ExecuteHollow(string[] args)
+        private static async Task ExecuteHollow(string[] args)
         {
             try
             {
@@ -3590,7 +3568,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//shapefill")]
         [Command("/shapefill")]
-        private async Task ExecuteShapeFill(string[] args)
+        private static async Task ExecuteShapeFill(string[] args)
         {
             if (args.Length == 0)
             {
@@ -3654,7 +3632,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//wrap")]
         [Command("/wrap")]
-        private async Task ExecuteWrap(string[] args)
+        private static async Task ExecuteWrap(string[] args)
         {
             if (args.Length == 0)
             {
@@ -3749,7 +3727,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//matrix")]
         [Command("/matrix")]
-        private async Task ExecuteMatrix(string[] args)
+        private static async Task ExecuteMatrix(string[] args)
         {
             if (args.Length < 2)
             {
@@ -3834,7 +3812,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//forest")]
         [Command("/forest")]
-        private async Task ExecuteForest(string[] args)
+        private static async Task ExecuteForest(string[] args)
         {
             if (args.Length == 0)
             {
@@ -3909,7 +3887,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//tree")]
         [Command("/tree")]
-        private async Task ExecuteTree(string[] args)
+        private static async Task ExecuteTree(string[] args)
         {
             try
             {
@@ -4033,7 +4011,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//floor")]
         [Command("/floor")]
-        private async Task ExecuteFloor(string[] args)
+        private static async Task ExecuteFloor(string[] args)
         {
             if (args.Length < 2)
             {
@@ -4095,7 +4073,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//cube")]
         [Command("/cube")]
-        private async Task ExecuteCube(string[] args)
+        private static async Task ExecuteCube(string[] args)
         {
             if (args.Length < 2)
             {
@@ -4157,7 +4135,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//prism")]
         [Command("/prism")]
-        private async Task ExecutePrism(string[] args)
+        private static async Task ExecutePrism(string[] args)
         {
             if (args.Length < 3)
             {
@@ -4221,7 +4199,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//sphere")]
         [Command("/sphere")]
-        private async Task ExecuteSphere(string[] args)
+        private static async Task ExecuteSphere(string[] args)
         {
             if (args.Length < 2)
             {
@@ -4284,7 +4262,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//pyramid")]
         [Command("/pyramid")]
-        private async Task ExecutePyramid(string[] args)
+        private static async Task ExecutePyramid(string[] args)
         {
             if (args.Length < 2)
             {
@@ -4346,7 +4324,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//cone")]
         [Command("/cone")]
-        private async Task ExecuteCone(string[] args)
+        private static async Task ExecuteCone(string[] args)
         {
             if (args.Length < 3)
             {
@@ -4411,7 +4389,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/cylinder")]
         [Command("//cyl")]
         [Command("/cyl")]
-        private async Task ExecuteCylinder(string[] args)
+        private static async Task ExecuteCylinder(string[] args)
         {
             if (args.Length < 3)
             {
@@ -4474,7 +4452,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//diamond")]
         [Command("/diamond")]
-        private async Task ExecuteDiamond(string[] args)
+        private static async Task ExecuteDiamond(string[] args)
         {
             if (args.Length < 2)
             {
@@ -4537,7 +4515,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//ring")]
         [Command("/ring")]
-        private async Task ExecuteRing(string[] args)
+        private static async Task ExecuteRing(string[] args)
         {
             if (args.Length < 2)
             {
@@ -4601,7 +4579,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/ringarray")]
         [Command("//ringa")]
         [Command("/ringa")]
-        private async Task ExecuteRingArray(string[] args)
+        private static async Task ExecuteRingArray(string[] args)
         {
             if (args.Length < 3)
             {
@@ -4669,7 +4647,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/gen")]
         [Command("//g")]
         [Command("/g")]
-        private async Task ExecuteGenerate(string[] args)
+        private static async Task ExecuteGenerate(string[] args)
         {
             if (args.Length < 2)
             {
@@ -4768,7 +4746,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/schematic")]
         [Command("//schem")]
         [Command("/schem")]
-        private void ExecuteSchematic(string[] args)
+        private static void ExecuteSchematic(string[] args)
         {
             if (args.Length == 0)
             {
@@ -4856,7 +4834,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//copy")]
         [Command("/copy")]
-        private async Task ExecuteCopy()
+        private static async Task ExecuteCopy()
         {
             try
             {
@@ -4879,7 +4857,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//cut")]
         [Command("/cut")]
-        private async Task ExecuteCut()
+        private static async Task ExecuteCut()
         {
             try
             {
@@ -4947,7 +4925,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//paste")]
         [Command("/paste")]
-        private async Task ExecutePaste(string[] args)
+        private static async Task ExecutePaste(string[] args)
         {
             // Ensure the copied clipboard is full.
             if (copiedRegion.Count() == 0)
@@ -5014,7 +4992,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//rotate")]
         [Command("/rotate")]
-        private async Task ExecuteRotate(string[] args)
+        private static async Task ExecuteRotate(string[] args)
         {
             // Ensure the copied clipboard is full.
             if (copiedRegion.Count() == 0)
@@ -5052,7 +5030,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//flip")]
         [Command("/flip")]
-        private async Task ExecuteFlip(string[] args)
+        private static async Task ExecuteFlip(string[] args)
         {
             // Ensure the copied clipboard is full.
             if (copiedRegion.Count() == 0)
@@ -5102,7 +5080,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/clearclipboard")]
         [Command("//clearc")]
         [Command("/clearc")]
-        private void ExecuteClearClipboard()
+        private static void ExecuteClearClipboard()
         {
             try
             {
@@ -5124,7 +5102,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/copychunk")]
         [Command("//copyc")]
         [Command("/copyc")]
-        private async Task ExecuteCopyChunk(string[] args)
+        private static async Task ExecuteCopyChunk(string[] args)
         {
             try
             {
@@ -5196,7 +5174,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/cutchunk")]
         [Command("//cutc")]
         [Command("/cutc")]
-        private async Task ExecuteCutChunk(string[] args)
+        private static async Task ExecuteCutChunk(string[] args)
         {
             try
             {
@@ -5317,7 +5295,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/pastechunk")]
         [Command("//pastec")]
         [Command("/pastec")]
-        private async Task ExecutePasteChunk(string[] args)
+        private static async Task ExecutePasteChunk(string[] args)
         {
             // Ensure the chunk clipboard is full.
             if (copiedChunk.Count == 0)
@@ -5447,7 +5425,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/delchunk")]
         [Command("//delc")]
         [Command("/delc")]
-        private async Task ExecuteDelChunk(string[] args)
+        private static async Task ExecuteDelChunk(string[] args)
         {
             try
             {
@@ -5598,7 +5576,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//tool")]
         [Command("/tool")]
-        private void ExecuteTool(string[] args) // Don't give 'static' for tool command.
+        private static void ExecuteTool(string[] args) // Don't give 'static' for tool command.
         {
             if (args.Length == 0)
             {
@@ -5655,14 +5633,21 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//navwand")]
         [Command("/navwand")]
-        private void ExecuteNavWand(string[] args)
+        private static void ExecuteNavWand(string[] args)
         {
+            // Summary:
+            // - /navwand                -> Toggle on/off
+            // - /navwand on|off|toggle  -> Explicit toggle state
+            // - /navwand <item|id|none> -> Set nav-wand item or disable it
+            //
+            // Lite behavior:
+            // - No config file
+            // - No persistence between sessions
+            // - Uses NavWandItemID / NavWandItemPreviousID in memory only
+
             try
             {
-                // Item assignment mode:
-                // /navwand compass
-                // /navwand 5
-                // /navwand none
+                // If the first argument is not a toggle token, treat it as an item assignment.
                 if (args != null && args.Length >= 1 && !string.IsNullOrWhiteSpace(args[0]) && !IsToggleToken(args[0]))
                 {
                     string token = (args[0] ?? "").Trim();
@@ -5675,10 +5660,6 @@ namespace DNA.CastleMinerZ.UI
 
                         NavWandItemID = -1;
                         ActiveNavWandItemID = -1;
-
-                        _navWandEnabled = false;
-                        NavWandEnabled = false;
-                        StopNavWandTimer();
 
                         string prevName = GetInventoryItemNameSafe(NavWandItemPreviousID);
 
@@ -5701,33 +5682,37 @@ namespace DNA.CastleMinerZ.UI
                     NavWandItemPreviousID = resolvedItemID;
                     ActiveNavWandItemID = resolvedItemID;
 
-                    _navWandEnabled = true;
-                    NavWandEnabled = true;
+                    // Reset the click latch after changing the nav-wand item.
                     _navWandRunTimes = 0;
 
-                    StartNavWandTimer();
-
-                    Console.WriteLine($"NavWand Enabled! (NavWandItem = {normalized}).");
+                    Console.WriteLine($"NavWand Item set to: {normalized} (enabled).");
                     return;
                 }
 
-                // Toggle mode:
-                bool current = _navWandEnabled;
-                bool enable = ResolveToggle(args, current);
+                // Toggle on/off.
+                bool isEnabled = NavWandItemID != -1;
+                bool enable = ResolveToggle(args, isEnabled);
 
                 if (!enable)
                 {
-                    _navWandEnabled = false;
-                    NavWandEnabled = false;
-                    _navWandRunTimes = 0;
+                    // Disabling: remember current item, then disable.
+                    if (NavWandItemID != -1)
+                        NavWandItemPreviousID = NavWandItemID;
 
-                    StopNavWandTimer();
+                    NavWandItemID = -1;
+                    ActiveNavWandItemID = -1;
 
-                    Console.WriteLine("NavWand Disabled!");
+                    string prevName = GetInventoryItemNameSafe(NavWandItemPreviousID);
+
+                    Console.WriteLine(
+                        !string.IsNullOrWhiteSpace(prevName)
+                            ? $"NavWand Disabled! (NavWandItem = none) | Previous item saved: {prevName}."
+                            : "NavWand Disabled! (NavWandItem = none).");
+
                     return;
                 }
 
-                // Enabling: restore previous item, else default to Compass.
+                // Enabling: restore previous item, else fall back to Compass.
                 int restoreItemID = (NavWandItemPreviousID != -1)
                     ? NavWandItemPreviousID
                     : (int)DNA.CastleMinerZ.Inventory.InventoryItemIDs.Compass;
@@ -5735,11 +5720,8 @@ namespace DNA.CastleMinerZ.UI
                 NavWandItemID = restoreItemID;
                 ActiveNavWandItemID = restoreItemID;
 
-                _navWandEnabled = true;
-                NavWandEnabled = true;
+                // Reset the nav-wand click latch after enabling.
                 _navWandRunTimes = 0;
-
-                StartNavWandTimer();
 
                 Console.WriteLine($"NavWand Enabled! (NavWandItem = {GetInventoryItemNameSafe(restoreItemID)}).");
             }
@@ -5758,7 +5740,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/brush")]
         [Command("//br")]
         [Command("/br")]
-        private void ExecuteBrush(string[] args) // Don't give 'static' for brush command.
+        private static void ExecuteBrush(string[] args) // Don't give 'static' for brush command.
         {
             if (args.Length == 0)
             {
@@ -5915,7 +5897,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//fill")]
         [Command("/fill")]
-        private async Task ExecuteFill(string[] args)
+        private static async Task ExecuteFill(string[] args)
         {
             if (args.Length < 2)
             {
@@ -5997,7 +5979,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//fillr")]
         [Command("/fillr")]
-        private async Task ExecuteFillRecursive(string[] args)
+        private static async Task ExecuteFillRecursive(string[] args)
         {
             if (args.Length < 2)
             {
@@ -6079,7 +6061,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//drain")]
         [Command("/drain")]
-        private async Task ExecuteDrain(string[] args)
+        private static async Task ExecuteDrain(string[] args)
         {
             if (args.Length < 1)
             {
@@ -6130,7 +6112,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/removenear")]
         [Command("//nuke")]
         [Command("/nuke")]
-        private async Task ExecuteRemoveNear(string[] args)
+        private static async Task ExecuteRemoveNear(string[] args)
         {
             if (args.Length == 0)
             {
@@ -6201,7 +6183,7 @@ namespace DNA.CastleMinerZ.UI
         [Command("/replacenear")]
         [Command("//renear")]
         [Command("/renear")]
-        private async Task ExecuteReplaceNear(string[] args)
+        private static async Task ExecuteReplaceNear(string[] args)
         {
             if (args.Length < 3)
             {
@@ -6294,7 +6276,7 @@ namespace DNA.CastleMinerZ.UI
 
         [Command("//snow")]
         [Command("/snow")]
-        private async Task ExecuteSnow(string[] args)
+        private static async Task ExecuteSnow(string[] args)
         {
             if (args.Length < 2)
             {
@@ -6412,7 +6394,7 @@ namespace DNA.CastleMinerZ.UI
         /// </summary>
         [Command("//randomplace")]
         [Command("/randomplace")]
-        private async Task ExecuteRandomPlace(string[] args)
+        private static async Task ExecuteRandomPlace(string[] args)
         {
             if (args.Length < 2)
             {
@@ -6561,8 +6543,8 @@ namespace DNA.CastleMinerZ.UI
 
         #region World Wand
 
-        private int _wandRunTimes;
-        private void WorldWand_Tick(object sender, EventArgs e)
+        private static int _wandRunTimes;
+        private static void WorldWand_Tick(object sender, EventArgs e)
         {
             if (!IsNetworkSessionActive() || !_wandEnabled)
             {
@@ -6616,8 +6598,8 @@ namespace DNA.CastleMinerZ.UI
 
         #region World Tool
 
-        private int _toolRunTimes;
-        private void WorldTool_Tick(object sender, EventArgs e)
+        private static int _toolRunTimes;
+        private static void WorldTool_Tick(object sender, EventArgs e)
         {
             if (!IsNetworkSessionActive() || !_toolEnabled)
             {
@@ -6661,7 +6643,7 @@ namespace DNA.CastleMinerZ.UI
 
                     // Get the method expecting a string[] parameter using reflection, ignoring case.
                     // INFO: For running the tool's method from a static void use typeof(Program).
-                    MethodInfo method = GetType().GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.IgnoreCase);
+                    MethodInfo method = typeof(WorldEditRuntime).GetMethod(methodName, BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.IgnoreCase);
 
                     if (method != null)
                     {
@@ -6725,15 +6707,15 @@ namespace DNA.CastleMinerZ.UI
 
         #region World NavWand
 
-        private Timer _navWandTimer;
-        private bool  _navWandBusy;
-        private int   _navWandRunTimes;
+        private static Timer _navWandTimer;
+        private static bool  _navWandBusy;
+        private static int   _navWandRunTimes;
 
         /// <summary>
         /// Starts the always-on nav-wand timer.
         /// Summary: While holding <see cref="NavWandItemID"/> (default: Compass), left click = /jumpto and right click = /thru.
         /// </summary>
-        private void StartNavWandTimer()
+        public static void StartNavWandTimer()
         {
             // Already running.
             if (_navWandTimer != null)
@@ -6748,7 +6730,7 @@ namespace DNA.CastleMinerZ.UI
         /// Stops and clears the nav-wand timer.
         /// Summary: Fully shuts down nav-wand ticking and resets its click/busy state.
         /// </summary>
-        private void StopNavWandTimer()
+        private static void StopNavWandTimer()
         {
             if (_navWandTimer == null)
                 return;
@@ -6766,15 +6748,8 @@ namespace DNA.CastleMinerZ.UI
         /// Handles nav-wand input.
         /// Summary: Provides quick navigation actions without typing commands.
         /// </summary>
-        private async void WorldNavWand_Tick(object sender, EventArgs e)
+        private static async void WorldNavWand_Tick(object sender, EventArgs e)
         {
-            // Stop the timer completely when nav-wand is disabled.
-            if (!_navWandEnabled)
-            {
-                StopNavWandTimer();
-                return;
-            }
-
             // If we're not in a session, do nothing (timer stays alive across world changes).
             if (!IsNetworkSessionActive())
                 return;
@@ -6841,16 +6816,16 @@ namespace DNA.CastleMinerZ.UI
 
         #region World Brush
 
-        private Timer _brushTimer;        // The single timer that drives WorldBrush_Tick.
-        private int _brushRunTimes;       // Set default values.
-        private string _brushBlockPattern = "1";
-        private string _brushShape        = "sphere";
-        private int _brushSize            = 4;
-        private int _brushHeight          = 8;
-        private bool _brushHollow         = false;
-        private bool _brushReplaceMode    = false;
-        private bool _brushRapidMode      = false;
-        private async void WorldBrush_Tick(object sender, EventArgs e)
+        private static Timer _brushTimer;        // The single timer that drives WorldBrush_Tick.
+        private static int _brushRunTimes;       // Set default values.
+        private static string _brushBlockPattern = "1";
+        private static string _brushShape        = "sphere";
+        private static int _brushSize            = 4;
+        private static int _brushHeight          = 8;
+        private static bool _brushHollow         = false;
+        private static bool _brushReplaceMode    = false;
+        private static bool _brushRapidMode      = false;
+        private static async void WorldBrush_Tick(object sender, EventArgs e)
         {
             if (!IsNetworkSessionActive() || !_brushEnabled)
             {
@@ -7034,6 +7009,36 @@ namespace DNA.CastleMinerZ.UI
         }
         #endregion
 
+        #endregion
+    }
+}
+
+namespace DNA.CastleMinerZ.UI
+{
+    public partial class PlainChatInputScreen : UIControlScreen
+    {
+        #region Text Edit Control
+
+        #pragma warning disable IDE1006 // Suppress naming styles warning.
+        private void _textEditControl_EnterPressed(object sender, EventArgs e)
+        #pragma warning restore IDE1006
+        {
+            string inputText = _textEditControl.Text.Trim();
+            if (string.IsNullOrWhiteSpace(inputText)) return;
+
+            if (inputText.StartsWith("/"))
+            {
+                HandleChatCommand(inputText);
+            }
+            else
+            {
+                // Not a command, do normal chat functions.
+                DNA.CastleMinerZ.Net.BroadcastTextMessage.Send(_game.MyNetworkGamer, $"{_game.MyNetworkGamer.Gamertag}: {inputText}");
+            }
+
+            _textEditControl.Text = ""; // Clear input to prevent repeated execution.
+            base.PopMe();
+        }
         #endregion
 
         /// <summary>

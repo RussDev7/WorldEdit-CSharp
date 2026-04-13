@@ -47,7 +47,13 @@ namespace DNA.CastleMinerZ
             /// </summary>
             AsyncBlockPlacer.Pump();
             AsyncFrameYield.Pump();
-			///
+            ///
+            /// <summary>
+            /// Ensure the nav-wand timer is running.
+            /// Safe to call every frame because StartNavWandTimer() ignores duplicate starts.
+            /// </summary>
+            WorldEditRuntime.StartNavWandTimer();
+            ///
             /// if (this.CurrentWorld != null)
             if (this.CurrentWorld != null)
             {
