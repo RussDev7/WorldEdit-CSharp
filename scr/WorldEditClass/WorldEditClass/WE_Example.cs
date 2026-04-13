@@ -46,11 +46,13 @@ namespace DNA.CastleMinerZ.UI
         // Instance flags (drive behavior).
         private bool _wandEnabled;
         private bool _toolEnabled;
+        private bool _navWandEnabled;
         private bool _brushEnabled;
 
         // Static snapshot.
         internal static volatile bool WandEnabled;
         internal static volatile bool ToolEnabled;
+        internal static volatile bool NavWandEnabled;
         internal static volatile bool BrushEnabled;
         internal static volatile int  ActiveWandItemID;
         internal static volatile int  ActiveToolItemID;
@@ -5655,19 +5657,12 @@ namespace DNA.CastleMinerZ.UI
         [Command("/navwand")]
         private void ExecuteNavWand(string[] args)
         {
-            // Summary:
-            // - /navwand                -> Toggle on/off
-            // - /navwand on|off|toggle  -> Explicit toggle state
-            // - /navwand <item|id|none> -> Set nav-wand item or disable it
-            //
-            // Lite behavior:
-            // - No config file
-            // - No persistence between sessions
-            // - Uses NavWandItemID / NavWandItemPreviousID in memory only
-
             try
             {
-                // If the first argument is not a toggle token, treat it as an item assignment.
+                // Item assignment mode:
+                // /navwand compass
+                // /navwand 5
+                // /navwand none
                 if (args != null && args.Length >= 1 && !string.IsNullOrWhiteSpace(args[0]) && !IsToggleToken(args[0]))
                 {
                     string token = (args[0] ?? "").Trim();
@@ -5680,6 +5675,10 @@ namespace DNA.CastleMinerZ.UI
 
                         NavWandItemID = -1;
                         ActiveNavWandItemID = -1;
+
+                        _navWandEnabled = false;
+                        NavWandEnabled = false;
+                        StopNavWandTimer();
 
                         string prevName = GetInventoryItemNameSafe(NavWandItemPreviousID);
 
@@ -5702,37 +5701,33 @@ namespace DNA.CastleMinerZ.UI
                     NavWandItemPreviousID = resolvedItemID;
                     ActiveNavWandItemID = resolvedItemID;
 
-                    // Reset the click latch after changing the nav-wand item.
+                    _navWandEnabled = true;
+                    NavWandEnabled = true;
                     _navWandRunTimes = 0;
 
-                    Console.WriteLine($"NavWand Item set to: {normalized} (enabled).");
+                    StartNavWandTimer();
+
+                    Console.WriteLine($"NavWand Enabled! (NavWandItem = {normalized}).");
                     return;
                 }
 
-                // Toggle on/off.
-                bool isEnabled = NavWandItemID != -1;
-                bool enable = ResolveToggle(args, isEnabled);
+                // Toggle mode:
+                bool current = _navWandEnabled;
+                bool enable = ResolveToggle(args, current);
 
                 if (!enable)
                 {
-                    // Disabling: remember current item, then disable.
-                    if (NavWandItemID != -1)
-                        NavWandItemPreviousID = NavWandItemID;
+                    _navWandEnabled = false;
+                    NavWandEnabled = false;
+                    _navWandRunTimes = 0;
 
-                    NavWandItemID = -1;
-                    ActiveNavWandItemID = -1;
+                    StopNavWandTimer();
 
-                    string prevName = GetInventoryItemNameSafe(NavWandItemPreviousID);
-
-                    Console.WriteLine(
-                        !string.IsNullOrWhiteSpace(prevName)
-                            ? $"NavWand Disabled! (NavWandItem = none) | Previous item saved: {prevName}."
-                            : "NavWand Disabled! (NavWandItem = none).");
-
+                    Console.WriteLine("NavWand Disabled!");
                     return;
                 }
 
-                // Enabling: restore previous item, else fall back to Compass.
+                // Enabling: restore previous item, else default to Compass.
                 int restoreItemID = (NavWandItemPreviousID != -1)
                     ? NavWandItemPreviousID
                     : (int)DNA.CastleMinerZ.Inventory.InventoryItemIDs.Compass;
@@ -5740,8 +5735,11 @@ namespace DNA.CastleMinerZ.UI
                 NavWandItemID = restoreItemID;
                 ActiveNavWandItemID = restoreItemID;
 
-                // Reset the nav-wand click latch after enabling.
+                _navWandEnabled = true;
+                NavWandEnabled = true;
                 _navWandRunTimes = 0;
+
+                StartNavWandTimer();
 
                 Console.WriteLine($"NavWand Enabled! (NavWandItem = {GetInventoryItemNameSafe(restoreItemID)}).");
             }
@@ -6735,7 +6733,7 @@ namespace DNA.CastleMinerZ.UI
         /// Starts the always-on nav-wand timer.
         /// Summary: While holding <see cref="NavWandItemID"/> (default: Compass), left click = /jumpto and right click = /thru.
         /// </summary>
-        private void StartNavWandTimer()
+        public void StartNavWandTimer()
         {
             // Already running.
             if (_navWandTimer != null)
@@ -6747,11 +6745,36 @@ namespace DNA.CastleMinerZ.UI
         }
 
         /// <summary>
+        /// Stops and clears the nav-wand timer.
+        /// Summary: Fully shuts down nav-wand ticking and resets its click/busy state.
+        /// </summary>
+        private void StopNavWandTimer()
+        {
+            if (_navWandTimer == null)
+                return;
+
+            _navWandTimer.Stop();
+            _navWandTimer.Tick -= WorldNavWand_Tick;
+            _navWandTimer.Dispose();
+            _navWandTimer = null;
+
+            _navWandBusy = false;
+            _navWandRunTimes = 0;
+        }
+
+        /// <summary>
         /// Handles nav-wand input.
         /// Summary: Provides quick navigation actions without typing commands.
         /// </summary>
         private async void WorldNavWand_Tick(object sender, EventArgs e)
         {
+            // Stop the timer completely when nav-wand is disabled.
+            if (!_navWandEnabled)
+            {
+                StopNavWandTimer();
+                return;
+            }
+
             // If we're not in a session, do nothing (timer stays alive across world changes).
             if (!IsNetworkSessionActive())
                 return;
