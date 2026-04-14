@@ -29,15 +29,17 @@ using System.Linq;
 using System.Text;
 using System.IO;
 using System;
-using static WE_ImageToPixelart.MainForm;
 
 namespace WE_ImageToPixelart
 {
     public partial class MainForm : Form
     {
+        #region State / Flags
+
         [DllImport("user32.dll")]
         public static extern short GetKeyState(int nVirtKey);
         private static CancellationTokenSource _cancellationTokenSource;
+        private bool _startedBuildColorFilter;
 
         public HashSet<Tuple<Vector3, int>> schematicData = new HashSet<Tuple<Vector3, int>>();
         public static Color GridColor { get; set; } = Color.Red;
@@ -49,6 +51,8 @@ namespace WE_ImageToPixelart
 
         public static Color GetCustomColor = Color.Black;
         public static bool isSchematicOld = false;
+
+        #endregion
 
         #region Initialization
 
@@ -94,9 +98,27 @@ namespace WE_ImageToPixelart
 
             // Define original image source.
             OriginalImageSource = SourceImage.Image;
+        }
+
+        // Starts first-run UI work after the form is actually shown.
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+
+            if (_startedBuildColorFilter)
+                return;
+
+            _startedBuildColorFilter = true;
 
             // Load the color filter.
-            _ = BuildColorFilter();
+            var _ = Task.Run(() => BuildColorFilter())  // or BuildColorFilterAsync(ct)
+                .ContinueWith(t =>
+                {
+                    // Observe/report error on UI thread
+                    BeginInvoke(new Action(() =>
+                        MessageBox.Show(this, t.Exception?.GetBaseException().Message ?? "Unknown error",
+                                        "Color filter error")));
+                }, TaskContinuationOptions.OnlyOnFaulted);
         }
         #endregion
 
