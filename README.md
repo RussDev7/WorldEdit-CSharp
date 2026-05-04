@@ -19,6 +19,29 @@ This library is nearly ready to go right out of the box! To get started, you may
 
 To learn how to use WorldEdit, read the [docs](https://github.com/RussDev7/WorldEdit-CSharp/wiki).
 
+
+**Can I convert Minecraft WorldEdit schematics for CastleMiner Z WorldEdit?**
+
+Yes. Use the optional external companion tool **[MCToCMZSchemConverter](https://github.com/RussDev7/MCToCMZSchemConverter)** to convert Minecraft WorldEdit/Sponge `.schem` files into CastleMiner Z WorldEdit `.schem` files.
+
+Basic converter usage:
+
+```bat
+MCToCMZSchemConverter.exe <input.schem> <output.schem> <block-map.json> [--save-air] [--preserve-origin]
+```
+
+Recommended flow:
+
+1. Export or download a Minecraft WorldEdit/Sponge `.schem`.
+2. Convert it with `MCToCMZSchemConverter.exe`.
+3. Review the generated `.unmapped.txt` report.
+4. Update `block-map.json` for any missing Minecraft block mappings.
+5. Load or paste the converted CastleMiner Z `.schem` through your WorldEdit schematic workflow.
+
+Use `--preserve-origin` when you want the Minecraft/Sponge horizontal paste origin converted into CastleMiner Z's `CopyAnchorOffset`. Use `--save-air` only when you want converted air/empty blocks to erase existing CastleMiner Z terrain during paste.
+
+> **Note:** MCToCMZSchemConverter is a separate repository/tool, not part of the standalone WorldEdit-CSharp library itself.
+
 **I have some feature requests...**
 
 Visit our [issue](https://github.com/RussDev7/WorldEdit-CSharp/issues) section. Feel free to submit a detailed breakdown of your thoughts!
