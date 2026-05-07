@@ -1727,7 +1727,7 @@ namespace WorldEdit
             ///   - Temporarily swaps copiedCrates so /stack doesn't clobber the user's clipboard sidecar.
             ///   - Captures crates from the source, then applies them for each stacked offset via PasteClipboardCrates().
             /// </summary>
-            public static void StackCrateContents(Region region, Direction facingDirection, int stackCount, bool overwriteExisting = true)
+            public static void StackCrateContents(Region region, Direction facingDirection, int stackCount, bool overwriteExisting = true, HashSet<int> blockMask = null)
             {
                 if (stackCount <= 0)
                     return;
@@ -1760,6 +1760,10 @@ namespace WorldEdit
                             for (int z = minZ; z <= maxZ; z++)
                             {
                                 int block = GetBlockFromLocation(new Vector3(x, y, z));
+
+                                if (blockMask != null && !blockMask.Contains(block))
+                                    continue;
+
                                 var bt = (DNA.CastleMinerZ.Terrain.BlockTypeEnum)block;
                                 if (!DNA.CastleMinerZ.Terrain.BlockType.IsContainer(bt))
                                     continue;
@@ -3747,6 +3751,11 @@ namespace WorldEdit
 
         public static Task<HashSet<Tuple<Vector3, int>>> StackRegion(Region region, Direction facingDirection, int stackCount, bool useAir = true, CancellationToken ct = default)
         {
+            return StackRegion(region, facingDirection, stackCount, useAir, null, ct);
+        }
+
+        public static Task<HashSet<Tuple<Vector3, int>>> StackRegion(Region region, Direction facingDirection, int stackCount, bool useAir, HashSet<int> blockMask, CancellationToken ct = default)
+        {
             return Task.Run(() =>
             {
                 HashSet<Tuple<Vector3, int>> stackBlocks = new HashSet<Tuple<Vector3, int>>();
@@ -3770,6 +3779,9 @@ namespace WorldEdit
                                 // Check if useAir is disabled and if so, skip gathering air blocks.
                                 if (!useAir && block == AirID) continue;
 
+                                // If a mask was provided, only stack source blocks that match the mask.
+                                if (blockMask != null && !blockMask.Contains(block)) continue;
+
                                 // Calculate the offset per direction and update original position with calculated position.
                                 Vector3 regionOffset = new Vector3(x, y, z) + GetStackedRegionOffset(region, facingDirection, stackOffset, i);
 
@@ -3779,8 +3791,6 @@ namespace WorldEdit
 
                                 // Save new location to stack region hashset.
                                 stackBlocks.Add(new Tuple<Vector3, int>(regionOffset, block));
-
-                                // Console.WriteLine("Stacked Region " + i + " - Original: " + new Vector3(x, y, z) + ", Offset: " + regionOffset);
                             }
                         }
                     }
