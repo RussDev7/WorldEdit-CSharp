@@ -218,6 +218,7 @@ namespace WorldEdit
             ("shapefill [block(,array)]",                                                    "Fills only the inner-most blocks of an object contained in this selection."),
             ("wrap [replace block(,array)] (wrap direction(s)(all)) (exclude direction(s))", "Fills only the outer-most air blocks of an object contained in this selection."),
             ("matrix [radius] [spacing] (snow) (default(,array))",                           "Places your clipboard spaced out in intervals."),
+            ("maze [block(,array)] (space) (multiFloor)",                                    "Generates a maze inside the selected region."),
             ("forest [area_size] [density] (max_height) (snow_radius)",                      "Make a forest within the region, or in a circle around pos1."),
             ("tree (max_height)",                                                            "Make a tree at position 1."),
             ("break",                                                                        "Mines and drops all blocks within the region."),
@@ -522,14 +523,14 @@ namespace WorldEdit
                 switch (enable)
                 {
                     case true:
-                        // if (args.Length != 1) { SendFeedback("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
+                        // if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
 
                         _enableCLU = true;
                         Console.WriteLine("Selections are now shown.");
                         break;
 
                     case false:
-                        // if (args.Length != 1) { SendFeedback("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
+                        // if (args.Length != 1) { Console.WriteLine("ERROR: Missing parameter. Usage: /cui [on/off]"); return; }
 
                         _enableCLU = false;
                         Console.WriteLine("Selections are now hidden.");
@@ -3816,6 +3817,129 @@ namespace WorldEdit
                 await SaveUndo(redoBuilder);
 
                 Console.WriteLine($"{redoBuilder.Count} blocks have been replaced!");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"ERROR: {ex.Message}.");
+            }
+        }
+        #endregion
+
+        #region /maze
+
+        [Command("//maze")]
+        [Command("/maze")]
+        private static async Task ExecuteMaze(string[] args)
+        {
+            if (args.Length == 0)
+            {
+                Console.WriteLine("ERROR: Command usage /maze [block(,array)] (space) (multiFloor)");
+                return;
+            }
+
+            try
+            {
+                string blockPattern = args[0];
+
+                // Default settings.
+                int space = 1;           // Corridor width.
+                bool multiFloor = false; // Single-floor by default.
+
+                // Supported:
+                // /maze stone
+                // /maze stone 2
+                // /maze stone true
+                // /maze stone 2 true
+                if (args.Length >= 2)
+                {
+                    if (bool.TryParse(args[1], out bool parsedMultiFloor))
+                    {
+                        multiFloor = parsedMultiFloor;
+                    }
+                    else if (int.TryParse(args[1], out int parsedSpace))
+                    {
+                        space = Math.Max(1, parsedSpace);
+                    }
+                    else
+                    {
+                        Console.WriteLine("ERROR: space must be a number, or multiFloor must be true/false.");
+                        return;
+                    }
+                }
+
+                if (args.Length >= 3)
+                {
+                    if (!bool.TryParse(args[2], out multiFloor))
+                    {
+                        Console.WriteLine("ERROR: multiFloor must be true or false.");
+                        return;
+                    }
+                }
+
+                // Convert names/IDs/comma arrays into block IDs.
+                int[] blockPatternNumbers = GetClosestEnumValues<DNA.CastleMinerZ.Terrain.BlockTypeEnum>(blockPattern, BlockIDValues);
+                if (blockPatternNumbers.Length == 0)
+                    return;
+
+                Region definedRegion = new Region(_pointToLocation1, _pointToLocation2);
+
+                // Same safety style as /set.
+                if (CalculateBlockCount(definedRegion.Position1, definedRegion.Position2) > 1000000 &&
+                    MessageBox.Show("This region contains over a million blocks.\n\nDo you want to continue anyways?",
+                                    "WE: Woah! That's a ton of blocks!",
+                                    MessageBoxButtons.YesNo,
+                                    MessageBoxIcon.Warning,
+                                    MessageBoxDefaultButton.Button2) == DialogResult.No)
+                {
+                    Console.WriteLine("Operation canceled.");
+                    return;
+                }
+
+                // Build the maze edit plan.
+                var mazeBlocks = await MakeMazeRegion(
+                    definedRegion,
+                    blockPatternNumbers,
+                    space,
+                    multiFloor
+                );
+
+                if (mazeBlocks.Count == 0)
+                {
+                    Console.WriteLine("ERROR: Region is too small for a maze. Try at least 3x3 blocks on X/Z.");
+                    return;
+                }
+
+                // Save old state before writing.
+                await SaveUndo(ExtractVector3HashSet(mazeBlocks));
+                ClearRedo();
+
+                HashSet<Tuple<Vector3, int>> redoBuilder = new HashSet<Tuple<Vector3, int>>();
+
+                foreach (var edit in mazeBlocks)
+                {
+                    Vector3 blockLocation = edit.Item1;
+                    int block = edit.Item2;
+
+                    int existingBlock = GetBlockFromLocation(blockLocation);
+
+                    if (existingBlock != block)
+                    {
+                        // If this location contains a crate, and we're not placing a crate, purge the crate contents.
+                        if (DNA.CastleMinerZ.Terrain.BlockType.IsContainer(GetBlockTypeFromLocation(blockLocation)) &&
+                            !DNA.CastleMinerZ.Terrain.BlockType.IsContainer((DNA.CastleMinerZ.Terrain.BlockTypeEnum)block))
+                        {
+                            TryDestroyCrateAt(blockLocation);
+                        }
+
+                        AsyncBlockPlacer.Enqueue(blockLocation, block);
+                        redoBuilder.Add(new Tuple<Vector3, int>(blockLocation, block));
+                    }
+                }
+
+                // Save redo state.
+                await SaveUndo(redoBuilder);
+
+                Console.WriteLine($"{redoBuilder.Count} maze block edits queued. space={space}, multiFloor={multiFloor}.");
             }
             catch (Exception ex)
             {
